@@ -1,19 +1,41 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import type { ContentImage, ContentMeta } from "@/types/database";
 
-/** 이미지 삽입이 끝난 최종 HTML과 이미지 URL 배열을 콘텐츠에 반영 */
-export async function finalizeContentHtml(
+/**
+ * 콘텐츠 자산 저장. body/images는 항상 반영, meta는 best-effort
+ * (contents.meta 컬럼은 마이그레이션 0006 필요 — 없으면 무시).
+ */
+export async function saveContentAssets(
   contentId: string,
-  finalHtml: string,
-  imageUrls: string[],
+  patch: { body?: string; images?: ContentImage[]; meta?: ContentMeta },
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("contents")
-    .update({ body: finalHtml, images: imageUrls })
-    .eq("id", contentId);
-  return error ? { ok: false, error: error.message } : { ok: true };
+
+  const base: Record<string, unknown> = {};
+  if (patch.body !== undefined) base.body = patch.body;
+  if (patch.images !== undefined) base.images = patch.images;
+  if (Object.keys(base).length > 0) {
+    const { error } = await supabase
+      .from("contents")
+      .update(base)
+      .eq("id", contentId);
+    if (error) return { ok: false, error: error.message };
+  }
+
+  if (patch.meta !== undefined) {
+    const { error } = await supabase
+      .from("contents")
+      .update({ meta: patch.meta })
+      .eq("id", contentId);
+    if (error) {
+      // 0006 미실행 시 meta 컬럼이 없을 수 있음 — 흐름은 막지 않음
+      console.error("[saveContentAssets] meta 저장 실패(0006 미실행?):", error.message);
+    }
+  }
+
+  return { ok: true };
 }
 
 interface SendToPlanInput {

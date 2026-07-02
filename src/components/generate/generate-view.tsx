@@ -5,14 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { getChannel, THREADS_CONTENT_TYPES } from "@/lib/channels";
-import { stripMarkdown, markdownToBasicHtml } from "@/lib/text";
+import { stripMarkdown } from "@/lib/text";
 import {
   META_DELIMITER,
   type StreamMeta,
 } from "@/lib/generation/stream-protocol";
 import { WordpressGenerator } from "@/components/generate/wordpress-generator";
 import { SendToPlanFooter } from "@/components/generate/send-to-plan";
-import { NaverImageBlock } from "@/components/generate/naver-image-block";
+import { NaverResult } from "@/components/generate/naver-result";
 import type { ChannelSettings } from "@/types/database";
 
 export function GenerateView() {
@@ -114,8 +114,9 @@ export function GenerateView() {
   }
 
   async function copy(kind: "formatted" | "plain") {
-    const text = kind === "plain" ? stripMarkdown(body) : body;
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(
+      kind === "plain" ? stripMarkdown(body) : body,
+    );
     setCopied(kind);
     setTimeout(() => setCopied(""), 1500);
   }
@@ -128,7 +129,7 @@ export function GenerateView() {
     );
   }
 
-  const naverImageMarkers = (body.match(/\[이미지[:：]/g) ?? []).length;
+  const naverReady = isNaver && status === "done" && !!body;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -167,19 +168,7 @@ export function GenerateView() {
       </div>
 
       {channel === "wordpress" ? (
-        <WordpressGenerator
-          clientId={selectedClientId}
-          planId={planId}
-          renderPlanFooter={(ctx) => (
-            <SendToPlanFooter
-              clientId={selectedClientId}
-              planId={planId}
-              channel={ctx.channel}
-              title={ctx.title}
-              contentId={ctx.contentId}
-            />
-          )}
-        />
+        <WordpressGenerator clientId={selectedClientId} planId={planId} />
       ) : (
         <>
           {/* 유형 선택 (스레드) */}
@@ -231,72 +220,18 @@ export function GenerateView() {
             </button>
           </div>
 
-          {/* 네이버: 렌더 미리보기 + 패널 / 스레드: 텍스트 편집 */}
-          {(body || status !== "idle") &&
-            (isNaver && status !== "streaming" && body ? (
-              <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-                <article
-                  className="prose prose-sm max-w-none rounded-lg border border-border bg-surface p-5 prose-headings:text-ink prose-a:text-accent-deep prose-strong:text-ink"
-                  dangerouslySetInnerHTML={{ __html: markdownToBasicHtml(body) }}
-                />
-                <div className="space-y-4">
-                  <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
-                    <h3 className="text-sm font-semibold text-ink">네이버 정보</h3>
-                    <PanelRow
-                      label="글자 수"
-                      value={`${stripMarkdown(body).length.toLocaleString()}자`}
-                    />
-                    <PanelRow
-                      label="[이미지: 설명] 위치"
-                      value={`${naverImageMarkers}곳`}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <button
-                      onClick={() => copy("formatted")}
-                      className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
-                    >
-                      {copied === "formatted" ? "복사됨" : "서식 유지 복사"}
-                    </button>
-                    <button
-                      onClick={() => copy("plain")}
-                      className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
-                    >
-                      {copied === "plain" ? "복사됨" : "플레인 텍스트 복사"}
-                    </button>
-                    <button
-                      onClick={generate}
-                      className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
-                    >
-                      다시 생성
-                    </button>
-                  </div>
-                  {meta && !meta.error && (
-                    <p className="text-xs text-muted">
-                      토큰 {meta.inputTokens.toLocaleString()} /{" "}
-                      {meta.outputTokens.toLocaleString()} · 라이브러리 저장됨
-                    </p>
-                  )}
-                  {status === "done" && meta?.contentId && (
-                    <SendToPlanFooter
-                      clientId={selectedClientId}
-                      planId={planId}
-                      channel={channel}
-                      title={topic.trim().slice(0, 120)}
-                      contentId={meta.contentId}
-                    />
-                  )}
-                  {status === "done" && body && (
-                    <NaverImageBlock
-                      key={meta?.contentId ?? "naver-img"}
-                      clientId={selectedClientId}
-                      keyword={topic}
-                      body={body}
-                    />
-                  )}
-                </div>
-              </div>
-            ) : (
+          {/* 결과 */}
+          {naverReady ? (
+            <NaverResult
+              key={meta?.contentId ?? "naver"}
+              clientId={selectedClientId}
+              planId={planId}
+              contentId={meta?.contentId ?? null}
+              title={topic.trim().slice(0, 120)}
+              body={body}
+            />
+          ) : (
+            (body || status !== "idle") && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-ink">결과</h2>
@@ -349,7 +284,8 @@ export function GenerateView() {
                   </div>
                 )}
               </div>
-            ))}
+            )
+          )}
         </>
       )}
     </div>
@@ -377,16 +313,5 @@ function TypeChip({
     >
       {label}
     </button>
-  );
-}
-
-function PanelRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="mb-0.5 text-xs font-medium text-muted">{label}</p>
-      <p className="rounded-md bg-subtle px-2.5 py-1.5 text-sm text-ink">
-        {value}
-      </p>
-    </div>
   );
 }

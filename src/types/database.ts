@@ -71,6 +71,18 @@ export interface ContentPlan extends Timestamps {
   memo: string | null;
 }
 
+export interface ContentImage {
+  url: string;
+  alt: string;
+  filename: string;
+}
+
+export interface ContentMeta {
+  slug?: string;
+  meta_description?: string;
+  faq?: { question: string; answer: string }[];
+}
+
 export interface Content extends Timestamps {
   id: string;
   client_id: string;
@@ -79,7 +91,8 @@ export interface Content extends Timestamps {
   content_type: string | null;
   title: string | null;
   body: string;
-  images: unknown[];
+  images: ContentImage[] | string[];
+  meta: ContentMeta | null;
   model: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
