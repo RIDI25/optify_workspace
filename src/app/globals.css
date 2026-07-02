@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+/*
+ * 옵티파이 워크스페이스 디자인 토큰
+ * 화이트 모드. 악센트 네온 그린은 버튼·포인트에만 사용(넓은 면적 금지).
+ */
+@theme {
+  --color-accent: #00e87b; /* 네온 그린 — 버튼·포인트 전용 */
+  --color-accent-deep: #057a4e; /* 보조 딥 그린 */
+  --color-tint: #eafbf2; /* 틴트 배경 */
+  --color-ink: #1a2421; /* 잉크(본문 텍스트) */
+
+  --color-surface: #ffffff;
+  --color-muted: #6b7772; /* 보조 텍스트 */
+  --color-border: #e4e9e7; /* 구분선 */
+  --color-subtle: #f5f7f6; /* 옅은 배경 */
+
+  --font-sans:
+    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
