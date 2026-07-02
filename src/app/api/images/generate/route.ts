@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { generateImage } from "@/lib/gemini";
+import { generateImage, GEMINI_IMAGE_MODEL } from "@/lib/gemini";
 import { safeImageFilename } from "@/lib/generation/html-images";
 import { logApiUsage } from "@/lib/usage";
 
@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       clientId: clientId ?? null,
       provider: "gemini",
+      model: GEMINI_IMAGE_MODEL, // 장당 고정 단가로 비용 추정 [AUDIT M-4]
     });
 
     return NextResponse.json({
