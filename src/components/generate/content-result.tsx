@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { markdownToBasicHtml, stripMarkdown } from "@/lib/text";
 import { SendToPlanFooter } from "@/components/generate/send-to-plan";
+import { setPublishedStatus } from "@/lib/actions/contents";
 import type { ContentImage, ContentMeta } from "@/types/database";
 
 export interface ContentResultData {
@@ -20,6 +21,8 @@ export interface ContentResultData {
   imagesProgress?: { current: number; total: number };
   /** WP 발행 버튼 노출 */
   canPublish?: boolean;
+  /** 저장된 발행 완료 시각 (라이브러리에서 전달) [AUDIT M-1] */
+  publishedAt?: string | null;
 }
 
 async function fetchBlob(url: string): Promise<Blob> {
@@ -98,6 +101,8 @@ export function ContentResultView(props: ContentResultData) {
   const [wpMsg, setWpMsg] = useState("");
   const [thumb, setThumb] = useState<string>("");
   const [publishing, setPublishing] = useState(false);
+  const [markedPublished, setMarkedPublished] = useState(!!props.publishedAt);
+  const [markMsg, setMarkMsg] = useState("");
 
   const displayHtml = isWp
     ? body
@@ -150,6 +155,19 @@ export function ContentResultView(props: ContentResultData) {
     } finally {
       setPublishing(false);
     }
+  }
+
+  async function togglePublished() {
+    if (!props.contentId) return;
+    const next = !markedPublished;
+    const r = await setPublishedStatus(props.contentId, next);
+    if (r.ok) {
+      setMarkedPublished(next);
+      setMarkMsg(next ? "발행 완료로 기록됨" : "발행 표시 해제됨");
+    } else {
+      setMarkMsg(`실패: ${r.error}`);
+    }
+    setTimeout(() => setMarkMsg(""), 2000);
   }
 
   const footer = (
@@ -247,6 +265,24 @@ export function ContentResultView(props: ContentResultData) {
             {images.map((img, i) => (
               <ImageCard key={i} img={img} />
             ))}
+          </div>
+        )}
+
+        {/* 발행 완료 수동 표시 — 대시보드·리포트 발행 집계에 반영 [AUDIT M-1] */}
+        {props.contentId && (
+          <div className="space-y-1">
+            <button
+              onClick={togglePublished}
+              className={[
+                "w-full rounded-md border px-3 py-2 text-sm font-medium",
+                markedPublished
+                  ? "border-accent-deep bg-tint text-accent-deep"
+                  : "border-border text-ink hover:bg-subtle",
+              ].join(" ")}
+            >
+              {markedPublished ? "✓ 발행 완료 (클릭 시 해제)" : "발행 완료로 표시"}
+            </button>
+            {markMsg && <p className="text-xs text-muted">{markMsg}</p>}
           </div>
         )}
 

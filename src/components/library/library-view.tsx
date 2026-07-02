@@ -203,6 +203,7 @@ export function LibraryView() {
             meta={selected.meta}
             images={normalizeImages(selected.images)}
             canPublish={selected.channel === "wordpress"}
+            publishedAt={selected.published_at}
           />
         </div>
       )}

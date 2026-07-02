@@ -38,6 +38,26 @@ export async function saveContentAssets(
   return { ok: true };
 }
 
+/**
+ * 발행 완료 수동 표시 [AUDIT M-1].
+ * 네이버/스레드는 외부에서 수동 발행하므로 published_at을 직접 기록해
+ * 대시보드·리포트의 발행 집계에 반영한다.
+ */
+export async function setPublishedStatus(
+  contentId: string,
+  published: boolean,
+): Promise<{ ok: boolean; publishedAt: string | null; error?: string }> {
+  const supabase = await createClient();
+  const publishedAt = published ? new Date().toISOString() : null;
+  const { error } = await supabase
+    .from("contents")
+    .update({ published_at: publishedAt })
+    .eq("id", contentId);
+  return error
+    ? { ok: false, publishedAt: null, error: error.message }
+    : { ok: true, publishedAt };
+}
+
 interface SendToPlanInput {
   clientId: string;
   channel: string;
