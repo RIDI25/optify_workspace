@@ -16,6 +16,13 @@ interface WpJson {
   image_prompts: { prompt: string; alt_text: string; filename: string }[];
 }
 
+const MIN_CHARS = 3000;
+
+/** 태그 제외 본문 글자 수 (패널 표시와 동일 기준) */
+function textLen(html: string): number {
+  return html.replace(/<[^>]+>/g, "").length;
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const {
@@ -96,6 +103,37 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    let inputTokens = msg.usage.input_tokens;
+    let outputTokens = msg.usage.output_tokens;
+
+    // 분량 보강 패스: 3,000자 미만이면 부족한 섹션을 확장(1회)
+    if (textLen(parsed.content_html) < MIN_CHARS) {
+      const boost = await anthropic.messages
+        .stream({
+          model: GENERATION_MODEL,
+          max_tokens: 32000,
+          system:
+            "너는 옵티파이의 SEO 편집자. 주어진 HTML 블로그 본문에서 분량이 얕은 H2 섹션을 각 400~600자 이상으로 확장해 전체를 3,000자 이상으로 보강하라. 기존 구조·소제목·주제를 유지하고 문단·예시·설명을 덧붙여 자연스럽게 늘린다. 없는 통계·수치는 만들지 말 것. 확장된 전체 HTML만 출력(코드블록·설명 문구 금지).",
+          messages: [
+            {
+              role: "user",
+              content: `현재 본문 글자 수 약 ${textLen(parsed.content_html)}자. 3,000자 이상으로 확장한 전체 HTML을 출력:\n\n${parsed.content_html}`,
+            },
+          ],
+        })
+        .finalMessage();
+      const bt = boost.content.find((b) => b.type === "text");
+      const expanded =
+        bt && bt.type === "text"
+          ? bt.text.replace(/```(?:html)?/g, "").trim()
+          : "";
+      inputTokens += boost.usage.input_tokens;
+      outputTokens += boost.usage.output_tokens;
+      if (textLen(expanded) > textLen(parsed.content_html)) {
+        parsed.content_html = expanded;
+      }
+    }
+
     // 초기 저장 (이미지 삽입 전 content_html)
     const { data: inserted } = await supabase
       .from("contents")
@@ -106,8 +144,8 @@ export async function POST(req: NextRequest) {
         title: topic.trim().slice(0, 120),
         body: parsed.content_html,
         model: GENERATION_MODEL,
-        input_tokens: msg.usage.input_tokens,
-        output_tokens: msg.usage.output_tokens,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
         created_by: user.id,
       })
       .select("id")
@@ -125,8 +163,8 @@ export async function POST(req: NextRequest) {
       clientId,
       provider: "anthropic",
       model: GENERATION_MODEL,
-      inputTokens: msg.usage.input_tokens,
-      outputTokens: msg.usage.output_tokens,
+      inputTokens,
+      outputTokens,
     });
 
     return NextResponse.json({

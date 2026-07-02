@@ -68,7 +68,7 @@ export function LibraryView() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="mx-auto max-w-7xl space-y-5">
       <div>
         <h1 className="text-xl font-bold text-ink">라이브러리</h1>
         <p className="mt-1 text-sm text-muted">

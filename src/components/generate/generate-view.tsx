@@ -12,6 +12,7 @@ import {
 } from "@/lib/generation/stream-protocol";
 import { WordpressGenerator } from "@/components/generate/wordpress-generator";
 import { SendToPlanFooter } from "@/components/generate/send-to-plan";
+import { NaverImageBlock } from "@/components/generate/naver-image-block";
 import type { ChannelSettings } from "@/types/database";
 
 export function GenerateView() {
@@ -130,7 +131,7 @@ export function GenerateView() {
   const naverImageMarkers = (body.match(/\[이미지[:：]/g) ?? []).length;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="text-xl font-bold text-ink">콘텐츠 생성</h1>
         <p className="mt-1 text-sm text-muted">
@@ -283,6 +284,14 @@ export function GenerateView() {
                       channel={channel}
                       title={topic.trim().slice(0, 120)}
                       contentId={meta.contentId}
+                    />
+                  )}
+                  {status === "done" && body && (
+                    <NaverImageBlock
+                      key={meta?.contentId ?? "naver-img"}
+                      clientId={selectedClientId}
+                      keyword={topic}
+                      body={body}
                     />
                   )}
                 </div>
