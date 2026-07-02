@@ -84,8 +84,19 @@ export function buildSystemPrompt(input: GenerateInput): string {
       "  - 사고 과정이나 선택 이유를 본문에 쓰지 마세요.",
       "  - 근거 없는 통계·수치는 생성하지 마세요.",
       "  - 한국어로 작성하세요.",
+      "  - 두괄식으로 쓰되 '결론부터 말씀드리면/말씀드릴게요/결론부터 이야기하면' 처럼 두괄식임을 선언하는 문구는 쓰지 마세요. 답을 그냥 자연스럽게 먼저 서술하세요.",
     ].join("\n"),
   );
+
+  if (input.channel === "naver_blog") {
+    parts.push(
+      [
+        "[네이버 마무리 규칙]",
+        "  - 마무리는 핵심 요약으로만 끝내세요. 회사 소개, CTA, 홍보 문구를 생성하지 마세요 (사용자가 별도로 추가합니다).",
+        "  - 특정 직군(대표님 등)을 호명하지 말고 범용 독자 대상으로 편하게 쓰세요.",
+      ].join("\n"),
+    );
+  }
 
   if (input.channel === "threads") {
     parts.push(
@@ -136,6 +147,8 @@ export function buildWordpressJsonPrompt(input: {
       `  - image_prompts는 정확히 ${input.imageCount}개. filename은 서로 다른 순번(-01, -02 …)으로.`,
       "  - alt_text와 filename에는 반드시 메인 키워드가 포함되어야 합니다.",
       "  - 근거 없는 통계·수치 금지. 확인 불가한 수치는 [출처 필요]로 표기.",
+      "  - 두괄식이되 '결론부터 말씀드리면' 류로 두괄식임을 선언하는 문구 금지 — 답을 자연스럽게 먼저 서술.",
+      "  - 분량: 각 H2 섹션 본문 400~600자 이상으로 충실히. content_html 전체(태그 제외) 3,000자 이상 필수. 얕게 끝내지 말 것.",
     ].join("\n"),
   ]
     .filter(Boolean)
@@ -150,6 +163,24 @@ export function buildWordpressJsonPrompt(input: {
     .filter(Boolean)
     .join("\n");
 
+  return { system, user };
+}
+
+/**
+ * 본문의 [이미지: 설명] 위치·맥락을 참고해 이미지 생성 프롬프트 배열을 뽑는 프롬프트.
+ * 네이버(본문 비삽입, 별도 다운로드용) 등에서 사용.
+ */
+export function buildImagePromptsPrompt(input: {
+  keyword: string;
+  body: string;
+  count: number;
+}): { system: string; user: string } {
+  const system = [
+    "너는 블로그 이미지 아트디렉터다. 주어진 본문의 [이미지: 설명] 위치와 전체 맥락을 참고해 이미지 생성 프롬프트를 JSON 배열로만 출력한다(코드블록·설명 문구 금지).",
+    "각 항목 형식: { \"prompt\": \"영어. 장면·구도·조명·분위기·스타일까지 상세하게. 사진풍(photorealistic). 이미지 안에 텍스트·글자·워터마크·로고 없음\", \"alt_text\": \"메인 키워드를 포함한 한국어 설명\", \"filename\": \"메인 키워드 영문 슬러그 + 2자리 순번 + .png\" }",
+    `정확히 ${input.count}개. filename 순번은 -01, -02 …로 서로 다르게. alt_text·filename에는 반드시 메인 키워드 포함.`,
+  ].join("\n");
+  const user = `메인 키워드: ${input.keyword}\n\n본문:\n${input.body}`;
   return { system, user };
 }
 
