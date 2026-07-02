@@ -27,11 +27,14 @@ Anthropic(콘텐츠) · Gemini(이미지) · Google Ads/GSC/GA4 · `@react-pdf/r
 - WP Application Password는 `channel_settings.wp_app_password_encrypted`에 암호화 저장, **복호화는 서버(API Route)에서만**.
 - `SUPABASE_SERVICE_ROLE_KEY`·`GOOGLE_SERVICE_ACCOUNT_KEY`는 서버 전용. 클라이언트 번들 유입 금지.
 - 근거 없는 통계·수치 생성 금지 — 생성 프롬프트(`lib/generation/brand-rules.ts`)에 필수 포함.
+- **XSS**: 생성 결과 미리보기·라이브러리 상세는 AI 생성 HTML을 `dangerouslySetInnerHTML`로 렌더한다
+  (`components/generate/content-result.tsx`). 내부 2인용 도구·신뢰 소스 전제라 현재는 sanitize 미적용.
+  **외부에 공개(고객 열람 링크, 퍼블릭 페이지 등)하는 시점에는 반드시 HTML sanitize(예: DOMPurify) 도입**할 것.
 
 ## 현재 상태
-Phase 0(스캐폴드) 완료: Next 스캐폴드 + 디자인 토큰, DB 스키마/RLS/시드 SQL(`supabase/migrations/`),
-Auth(로그인/로그아웃·미들웨어 라우트 가드), 공통 레이아웃(사이드바 + 클라이언트 선택기), 페이지 스텁.
-다음: Phase 1 (생성 엔진부터). 각 Phase 완료 시 빌드·타입체크 통과 후 커밋.
+Phase 1 완료(생성 엔진·WP/네이버/스레드·키워드·플랜·라이브러리·대시보드), Phase 2 진행 중(리포트).
+DB: `supabase/migrations/0001~0006`. 0006(contents.meta)은 DDL이라 SQL Editor에서 수동 실행.
+각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)
 `supabase/migrations/0001 → 0002 → 0003` 순서로 SQL Editor 실행. 이후 대시보드에서 owner/member
