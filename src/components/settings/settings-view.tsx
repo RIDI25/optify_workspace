@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { channelLabel } from "@/lib/channels";
-import { saveClient, savePreset, saveWpConnection } from "@/lib/actions/settings";
+import {
+  saveClient,
+  savePreset,
+  saveChannelAssignee,
+  saveWpConnection,
+} from "@/lib/actions/settings";
 import type { Client, ChannelSettings, Profile, Role } from "@/types/database";
 
 type Tab = "clients" | "presets" | "wordpress" | "team" | "usage";
@@ -94,7 +99,9 @@ export function SettingsView({ role }: { role: Role }) {
       {tab === "clients" && (
         <ClientsTab clients={clients} readOnly={!isOwner} onSaved={reload} />
       )}
-      {tab === "presets" && <PresetsTab clients={clients} readOnly={!isOwner} />}
+      {tab === "presets" && (
+        <PresetsTab clients={clients} profiles={profiles} readOnly={!isOwner} />
+      )}
       {tab === "wordpress" && (
         <WordpressTab clients={clients} readOnly={!isOwner} />
       )}
@@ -276,19 +283,28 @@ function ClientCard({
   );
 }
 
-function PresetsTab({ clients, readOnly }: { clients: Client[]; readOnly: boolean }) {
+function PresetsTab({
+  clients,
+  profiles,
+  readOnly,
+}: {
+  clients: Client[];
+  profiles: Profile[];
+  readOnly: boolean;
+}) {
   const [clientId, setClientId] = useState("");
   const [settings, setSettings] = useState<ChannelSettings[]>([]);
   const [channel, setChannel] = useState("");
   const [json, setJson] = useState("");
   const [msg, setMsg] = useState("");
+  const [assigneeMsg, setAssigneeMsg] = useState("");
   const cid = clientId || clients[0]?.id || "";
 
   useEffect(() => {
     if (!cid) return;
     createClient()
       .from("channel_settings")
-      .select("*")
+      .select("id, channel, preset, default_assignee")
       .eq("client_id", cid)
       .then(({ data }) => {
         const rows = (data ?? []) as ChannelSettings[];
@@ -303,6 +319,21 @@ function PresetsTab({ clients, readOnly }: { clients: Client[]; readOnly: boolea
     setChannel(ch);
     const s = settings.find((x) => x.channel === ch);
     setJson(s ? JSON.stringify(s.preset, null, 2) : "{}");
+  }
+
+  const currentAssignee =
+    settings.find((s) => s.channel === channel)?.default_assignee ?? "";
+
+  async function changeAssignee(value: string) {
+    const assignee = value || null;
+    setSettings((prev) =>
+      prev.map((s) =>
+        s.channel === channel ? { ...s, default_assignee: assignee } : s,
+      ),
+    );
+    const r = await saveChannelAssignee(cid, channel, assignee);
+    setAssigneeMsg(r.ok ? "기본 담당자 저장됨" : `실패: ${r.error}`);
+    setTimeout(() => setAssigneeMsg(""), 2000);
   }
 
   async function save() {
@@ -343,6 +374,25 @@ function PresetsTab({ clients, readOnly }: { clients: Client[]; readOnly: boolea
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          기본 담당자
+          <select
+            value={currentAssignee}
+            onChange={(e) => changeAssignee(e.target.value)}
+            disabled={readOnly || !channel}
+            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink disabled:bg-subtle"
+          >
+            <option value="">없음</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({p.role === "owner" ? "관리자" : "멤버"})
+              </option>
+            ))}
+          </select>
+        </label>
+        {assigneeMsg && (
+          <span className="self-center text-xs text-muted">{assigneeMsg}</span>
+        )}
       </div>
       <textarea
         value={json}

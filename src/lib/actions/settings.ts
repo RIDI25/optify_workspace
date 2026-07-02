@@ -46,6 +46,21 @@ export async function savePreset(
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/** 채널 기본 담당자 저장. owner만 — RLS로 강제. */
+export async function saveChannelAssignee(
+  clientId: string,
+  channel: string,
+  assignee: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("channel_settings")
+    .update({ default_assignee: assignee })
+    .eq("client_id", clientId)
+    .eq("channel", channel);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 /** WP 연결 정보 저장. 비밀번호는 서버에서 암호화. owner만. */
 export async function saveWpConnection(
   clientId: string,
