@@ -57,12 +57,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const anthropic = createAnthropic();
-    const msg = await anthropic.messages.create({
-      model: GENERATION_MODEL,
-      max_tokens: 32000,
-      system,
-      messages: [{ role: "user", content: userPrompt }],
-    });
+    // 큰 max_tokens는 non-streaming 시 SDK의 10분 타임아웃 가드에 걸리므로 스트리밍 사용.
+    // 청크는 SDK가 누적하고, finalMessage()로 완성 메시지를 받아 JSON을 파싱한다.
+    const msg = await anthropic.messages
+      .stream({
+        model: GENERATION_MODEL,
+        max_tokens: 32000,
+        system,
+        messages: [{ role: "user", content: userPrompt }],
+      })
+      .finalMessage();
 
     const textBlock = msg.content.find((b) => b.type === "text");
     const rawText = textBlock && textBlock.type === "text" ? textBlock.text : "";
@@ -70,15 +74,17 @@ export async function POST(req: NextRequest) {
 
     // 재시도: 유효 JSON으로 다시 작성 요청
     if (!parsed) {
-      const retry = await anthropic.messages.create({
-        model: GENERATION_MODEL,
-        max_tokens: 32000,
-        system:
-          "당신은 잘못된 JSON을 고치는 도우미입니다. 입력을 유효한 JSON으로만 다시 출력하세요. 다른 텍스트 금지.",
-        messages: [
-          { role: "user", content: `유효한 JSON으로 다시 출력:\n\n${rawText}` },
-        ],
-      });
+      const retry = await anthropic.messages
+        .stream({
+          model: GENERATION_MODEL,
+          max_tokens: 32000,
+          system:
+            "당신은 잘못된 JSON을 고치는 도우미입니다. 입력을 유효한 JSON으로만 다시 출력하세요. 다른 텍스트 금지.",
+          messages: [
+            { role: "user", content: `유효한 JSON으로 다시 출력:\n\n${rawText}` },
+          ],
+        })
+        .finalMessage();
       const rb = retry.content.find((b) => b.type === "text");
       parsed = robustJsonParse<WpJson>(rb && rb.type === "text" ? rb.text : "");
     }
