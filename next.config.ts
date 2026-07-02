@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  // PDF 내보내기 라우트가 런타임에 한글 폰트(OTF)를 읽을 수 있도록 번들 트레이싱에 포함.
+  outputFileTracingIncludes: {
+    "/api/reports/export": ["./public/fonts/**"],
+  },
 };
 
 export default nextConfig;

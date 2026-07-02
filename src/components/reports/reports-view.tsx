@@ -18,6 +18,7 @@ import {
   NaverMetricsForm,
   defaultNaverMetrics,
 } from "@/components/reports/naver-metrics-form";
+import { ReportExport } from "@/components/reports/report-export";
 import type { NaverManualMetrics } from "@/types/database";
 
 function currentYm(): string {
@@ -388,6 +389,19 @@ export function ReportsView() {
           확정 저장
         </button>
         {saveMsg && <span className="text-xs text-muted">{saveMsg}</span>}
+        <ReportExport
+          clientId={selectedClientId}
+          clientName={selectedClient?.name ?? ""}
+          yearMonth={ym}
+          report={{
+            content_summary: contentSummary,
+            gsc,
+            ga4,
+            naver_manual_metrics: naver,
+            next_month_plans: nextPlans,
+            ai_summary: summary,
+          }}
+        />
       </div>
     </div>
   );
