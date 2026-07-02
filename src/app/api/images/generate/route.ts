@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { generateImage } from "@/lib/gemini";
+import { safeImageFilename } from "@/lib/generation/html-images";
 import { logApiUsage } from "@/lib/usage";
 
 export const runtime = "nodejs";
@@ -20,13 +21,16 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return new NextResponse("Unauthorized", { status: 401 });
 
-  const { clientId, prompt } = await req.json();
+  const { clientId, prompt, filename, alt } = await req.json();
   if (!prompt?.trim()) {
     return NextResponse.json({ ok: false, error: "prompt 필수" }, { status: 400 });
   }
 
+  // 텍스트 없는 사진풍 안전 접미사 (참고 프로젝트 패턴)
+  const safePrompt = `${prompt}. No text, letters, watermarks or logos in the image. Photorealistic, high quality, 16:9.`;
+
   try {
-    const { data, mime } = await generateImage(prompt);
+    const { data, mime } = await generateImage(safePrompt);
 
     const admin = createAdminClient();
     // 버킷 보장 (idempotent)
@@ -35,10 +39,14 @@ export async function POST(req: NextRequest) {
       .catch(() => undefined);
 
     const ext = mime.includes("jpeg") ? "jpg" : "png";
-    const path = `${clientId ?? "shared"}/${randomUUID()}.${ext}`;
+    // SEO 파일명(있으면) 우선, 없으면 UUID. 클라이언트 폴더 하위에 저장.
+    const name = filename
+      ? safeImageFilename(filename, ext)
+      : `${randomUUID()}.${ext}`;
+    const path = `${clientId ?? "shared"}/${name}`;
     const { error: upErr } = await admin.storage
       .from(BUCKET)
-      .upload(path, data, { contentType: mime, upsert: false });
+      .upload(path, data, { contentType: mime, upsert: true });
     if (upErr) throw upErr;
 
     const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
@@ -49,7 +57,12 @@ export async function POST(req: NextRequest) {
       provider: "gemini",
     });
 
-    return NextResponse.json({ ok: true, url: pub.publicUrl });
+    return NextResponse.json({
+      ok: true,
+      url: pub.publicUrl,
+      alt: alt ?? "",
+      filename: name,
+    });
   } catch (e) {
     return NextResponse.json({
       ok: false,

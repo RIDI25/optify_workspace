@@ -108,6 +108,51 @@ export function buildUserPrompt(input: GenerateInput): string {
   return parts.join("\n\n");
 }
 
+/**
+ * 워드프레스 구조화(JSON) 생성 프롬프트.
+ * 결과는 content_html / meta_description / slug / faq[] / image_prompts[]로 구성.
+ * image_prompts의 alt_text·filename에는 반드시 메인 키워드가 포함되도록 지시.
+ */
+export function buildWordpressJsonPrompt(input: {
+  preset: Record<string, unknown>;
+  topic: string;
+  keyword: string;
+  extraInstructions?: string;
+  imageCount: number;
+}): { system: string; user: string } {
+  const system = [
+    brandRulesBlock(),
+    "당신은 옵티파이(검색 마케팅 회사)의 워드프레스 SEO 블로그 작가입니다. 아래 채널 프리셋을 철저히 준수하세요.",
+    renderPreset(input.preset),
+    [
+      "[출력 형식 — 반드시 유효한 JSON 객체 하나만 출력. 코드블록·설명 문구 금지]",
+      "{",
+      '  "content_html": "본문 전체를 유효한 HTML로. h2/h3/p/ul/li/table/strong 사용. 이미지 태그는 넣지 말 것(이미지는 후처리로 삽입). 첫 200단어 안에 핵심 질문 직접 답변(두괄식).",',
+      '  "meta_description": "150자 내외 메타 디스크립션",',
+      '  "slug": "영문 소문자 하이픈 슬러그",',
+      '  "faq": [{ "question": "...", "answer": "두괄식 답변" }],  // 3~6개',
+      `  "image_prompts": [{ "prompt": "영문 이미지 생성 프롬프트(사진풍, 텍스트 없음)", "alt_text": "메인 키워드를 포함한 한국어 alt 텍스트", "filename": "메인 키워드 기반 영문 슬러그 + 2자리 순번, 예: dermatology-seo-guide-01.png" }]  // ${input.imageCount}개`,
+      "}",
+      `  - image_prompts는 정확히 ${input.imageCount}개. filename은 서로 다른 순번(-01, -02 …)으로.`,
+      "  - alt_text와 filename에는 반드시 메인 키워드가 포함되어야 합니다.",
+      "  - 근거 없는 통계·수치 금지. 확인 불가한 수치는 [출처 필요]로 표기.",
+    ].join("\n"),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const user = [
+    `메인 키워드: ${input.keyword}`,
+    `주제: ${input.topic}`,
+    input.extraInstructions?.trim() ? `추가 지시: ${input.extraInstructions.trim()}` : "",
+    "위 정보로 SEO 최적화 롱폼 블로그를 위 JSON 형식으로 생성하세요.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return { system, user };
+}
+
 /** 부분 수정용 프롬프트 (선택 텍스트 + 지시 → 전체 본문 재작성) */
 export function buildRefinePrompt(
   fullBody: string,

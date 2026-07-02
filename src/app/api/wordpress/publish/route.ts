@@ -18,10 +18,12 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return new NextResponse("Unauthorized", { status: 401 });
 
-  const { clientId, title, body, contentId } = await req.json();
-  if (!clientId || !body?.trim()) {
+  const { clientId, title, body, contentHtml, contentId } = await req.json();
+  // contentHtml(이미 HTML)이 오면 그대로, 아니면 body(markdown)를 변환
+  const hasHtml = typeof contentHtml === "string" && contentHtml.trim();
+  if (!clientId || (!hasHtml && !body?.trim())) {
     return NextResponse.json(
-      { ok: false, error: "clientId, body는 필수입니다." },
+      { ok: false, error: "clientId와 본문은 필수입니다." },
       { status: 400 },
     );
   }
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest) {
       settings.wp_username ?? "",
       password,
       title || "(제목 없음)",
-      markdownToBasicHtml(body),
+      hasHtml ? contentHtml : markdownToBasicHtml(body),
     );
 
     if (contentId) {

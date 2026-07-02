@@ -1,0 +1,141 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { createAnthropic, GENERATION_MODEL } from "@/lib/anthropic";
+import { buildWordpressJsonPrompt } from "@/lib/generation/engine";
+import { robustJsonParse } from "@/lib/generation/json";
+import { logApiUsage } from "@/lib/usage";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
+interface WpJson {
+  content_html: string;
+  meta_description: string;
+  slug: string;
+  faq: { question: string; answer: string }[];
+  image_prompts: { prompt: string; alt_text: string; filename: string }[];
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return new NextResponse("Unauthorized", { status: 401 });
+
+  const { clientId, topic, keyword, extraInstructions, planId } =
+    await req.json();
+  if (!clientId || !topic?.trim()) {
+    return NextResponse.json(
+      { ok: false, error: "clientId, topic는 필수입니다." },
+      { status: 400 },
+    );
+  }
+
+  const { data: settings } = await supabase
+    .from("channel_settings")
+    .select("preset")
+    .eq("client_id", clientId)
+    .eq("channel", "wordpress")
+    .single();
+  if (!settings) {
+    return NextResponse.json(
+      { ok: false, error: "워드프레스 프리셋이 없습니다." },
+      { status: 404 },
+    );
+  }
+
+  // 글 길이 기준 이미지 3~4장 (롱폼 기본 4장)
+  const imageCount = 4;
+  const { system, user: userPrompt } = buildWordpressJsonPrompt({
+    preset: settings.preset as Record<string, unknown>,
+    topic,
+    keyword: keyword?.trim() || topic.trim(),
+    extraInstructions,
+    imageCount,
+  });
+
+  try {
+    const anthropic = createAnthropic();
+    const msg = await anthropic.messages.create({
+      model: GENERATION_MODEL,
+      max_tokens: 32000,
+      system,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const textBlock = msg.content.find((b) => b.type === "text");
+    const rawText = textBlock && textBlock.type === "text" ? textBlock.text : "";
+    let parsed = robustJsonParse<WpJson>(rawText);
+
+    // 재시도: 유효 JSON으로 다시 작성 요청
+    if (!parsed) {
+      const retry = await anthropic.messages.create({
+        model: GENERATION_MODEL,
+        max_tokens: 32000,
+        system:
+          "당신은 잘못된 JSON을 고치는 도우미입니다. 입력을 유효한 JSON으로만 다시 출력하세요. 다른 텍스트 금지.",
+        messages: [
+          { role: "user", content: `유효한 JSON으로 다시 출력:\n\n${rawText}` },
+        ],
+      });
+      const rb = retry.content.find((b) => b.type === "text");
+      parsed = robustJsonParse<WpJson>(rb && rb.type === "text" ? rb.text : "");
+    }
+
+    if (!parsed?.content_html) {
+      return NextResponse.json({
+        ok: false,
+        error: "AI 응답 JSON 파싱에 실패했습니다. 다시 시도해주세요.",
+      });
+    }
+
+    // 초기 저장 (이미지 삽입 전 content_html)
+    const { data: inserted } = await supabase
+      .from("contents")
+      .insert({
+        client_id: clientId,
+        plan_id: planId ?? null,
+        channel: "wordpress",
+        title: topic.trim().slice(0, 120),
+        body: parsed.content_html,
+        model: GENERATION_MODEL,
+        input_tokens: msg.usage.input_tokens,
+        output_tokens: msg.usage.output_tokens,
+        created_by: user.id,
+      })
+      .select("id")
+      .single();
+
+    if (planId) {
+      await supabase
+        .from("content_plans")
+        .update({ status: "review" })
+        .eq("id", planId);
+    }
+
+    await logApiUsage({
+      userId: user.id,
+      clientId,
+      provider: "anthropic",
+      model: GENERATION_MODEL,
+      inputTokens: msg.usage.input_tokens,
+      outputTokens: msg.usage.output_tokens,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      contentId: inserted?.id ?? null,
+      content_html: parsed.content_html,
+      meta_description: parsed.meta_description ?? "",
+      slug: parsed.slug ?? "",
+      faq: parsed.faq ?? [],
+      image_prompts: (parsed.image_prompts ?? []).slice(0, imageCount),
+    });
+  } catch (e) {
+    return NextResponse.json({
+      ok: false,
+      error: e instanceof Error ? e.message : "생성 실패",
+    });
+  }
+}

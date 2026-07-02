@@ -5,11 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { getChannel, THREADS_CONTENT_TYPES } from "@/lib/channels";
-import { stripMarkdown } from "@/lib/text";
+import { stripMarkdown, markdownToBasicHtml } from "@/lib/text";
 import {
   META_DELIMITER,
   type StreamMeta,
 } from "@/lib/generation/stream-protocol";
+import { WordpressGenerator } from "@/components/generate/wordpress-generator";
 import type { ChannelSettings } from "@/types/database";
 
 export function GenerateView() {
@@ -18,7 +19,6 @@ export function GenerateView() {
   const planId = searchParams.get("planId");
 
   const [channels, setChannels] = useState<ChannelSettings[]>([]);
-  // 플랜에서 진입 시 채널/주제 프리필 (쿼리 파라미터에서 1회 초기화)
   const [channel, setChannel] = useState<string>(
     () => searchParams.get("channel") ?? "",
   );
@@ -31,15 +31,8 @@ export function GenerateView() {
     "idle",
   );
   const [meta, setMeta] = useState<StreamMeta | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string>("");
 
-  const [wpMsg, setWpMsg] = useState<string>("");
-  const [wpBusy, setWpBusy] = useState(false);
-  const [imgPrompt, setImgPrompt] = useState("");
-  const [imgBusy, setImgBusy] = useState(false);
-  const [imgMsg, setImgMsg] = useState("");
-
-  // 선택 클라이언트의 활성 채널 로드
   useEffect(() => {
     if (!selectedClientId) return;
     const supabase = createClient();
@@ -57,13 +50,14 @@ export function GenerateView() {
 
   const activeChannelDef = useMemo(() => getChannel(channel), [channel]);
   const hasContentTypes = activeChannelDef?.hasContentTypes ?? false;
+  const isNaver = channel === "naver_blog";
 
   async function generate() {
     if (!selectedClientId || !channel || !topic.trim()) return;
     setStatus("streaming");
     setBody("");
     setMeta(null);
-    setCopied(false);
+    setCopied("");
 
     try {
       const res = await fetch("/api/generate", {
@@ -93,20 +87,16 @@ export function GenerateView() {
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         const idx = buffer.indexOf(META_DELIMITER);
-        if (idx === -1) {
-          setBody(buffer);
-        } else {
-          setBody(buffer.slice(0, idx));
-        }
+        setBody(idx === -1 ? buffer : buffer.slice(0, idx));
       }
 
       const idx = buffer.indexOf(META_DELIMITER);
       if (idx !== -1) {
-        const bodyText = buffer.slice(0, idx);
-        const metaJson = buffer.slice(idx + META_DELIMITER.length);
-        setBody(bodyText);
+        setBody(buffer.slice(0, idx));
         try {
-          const m = JSON.parse(metaJson) as StreamMeta;
+          const m = JSON.parse(
+            buffer.slice(idx + META_DELIMITER.length),
+          ) as StreamMeta;
           setMeta(m);
           setStatus(m.error ? "error" : "done");
         } catch {
@@ -121,64 +111,11 @@ export function GenerateView() {
     }
   }
 
-  async function publishWp() {
-    if (!selectedClientId || !body.trim()) return;
-    setWpBusy(true);
-    setWpMsg("");
-    try {
-      const res = await fetch("/api/wordpress/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId: selectedClientId,
-          title: topic.trim().slice(0, 120),
-          body,
-          contentId: meta?.contentId ?? null,
-        }),
-      });
-      const data = await res.json();
-      setWpMsg(
-        data.ok
-          ? `WP 초안 발행 완료 (post #${data.wpPostId})`
-          : `실패: ${data.error}`,
-      );
-    } catch (e) {
-      setWpMsg(e instanceof Error ? e.message : "발행 실패");
-    } finally {
-      setWpBusy(false);
-    }
-  }
-
-  async function genImage() {
-    if (!imgPrompt.trim()) return;
-    setImgBusy(true);
-    setImgMsg("");
-    try {
-      const res = await fetch("/api/images/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: selectedClientId, prompt: imgPrompt }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setBody((b) => `${b}\n\n![${imgPrompt}](${data.url})`);
-        setImgMsg("본문 하단에 이미지 삽입됨");
-        setImgPrompt("");
-      } else {
-        setImgMsg(`실패: ${data.error}`);
-      }
-    } catch (e) {
-      setImgMsg(e instanceof Error ? e.message : "이미지 생성 실패");
-    } finally {
-      setImgBusy(false);
-    }
-  }
-
-  async function copy(plain: boolean) {
-    const text = plain ? stripMarkdown(body) : body;
+  async function copy(kind: "formatted" | "plain") {
+    const text = kind === "plain" ? stripMarkdown(body) : body;
     await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    setCopied(kind);
+    setTimeout(() => setCopied(""), 1500);
   }
 
   if (!selectedClientId) {
@@ -189,8 +126,10 @@ export function GenerateView() {
     );
   }
 
+  const naverImageMarkers = (body.match(/\[이미지[:：]/g) ?? []).length;
+
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <h1 className="text-xl font-bold text-ink">콘텐츠 생성</h1>
         <p className="mt-1 text-sm text-muted">
@@ -225,152 +164,187 @@ export function GenerateView() {
         )}
       </div>
 
-      {/* 유형 선택 (스레드 등) */}
-      {hasContentTypes && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setContentType("auto")}
-            className={[
-              "rounded-full border px-3 py-1 text-xs font-medium",
-              contentType === "auto"
-                ? "border-accent-deep bg-tint text-accent-deep"
-                : "border-border text-muted hover:bg-subtle",
-            ].join(" ")}
-          >
-            자동 추천
-          </button>
-          {THREADS_CONTENT_TYPES.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setContentType(t.key)}
-              className={[
-                "rounded-full border px-3 py-1 text-xs font-medium",
-                contentType === t.key
-                  ? "border-accent-deep bg-tint text-accent-deep"
-                  : "border-border text-muted hover:bg-subtle",
-              ].join(" ")}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* 입력 */}
-      <div className="space-y-3">
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-ink">주제 / 소재</label>
-          <textarea
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            rows={2}
-            placeholder="예: 지역 병원의 네이버 플레이스 상위노출 전략"
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium text-ink">추가 지시 (선택)</label>
-          <textarea
-            value={extra}
-            onChange={(e) => setExtra(e.target.value)}
-            rows={2}
-            placeholder="예: CTA는 무료 점검 신청으로, 특정 키워드 포함 등"
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
-          />
-        </div>
-        <button
-          onClick={generate}
-          disabled={status === "streaming" || !channel || !topic.trim()}
-          className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-ink transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
-          {status === "streaming" ? "생성 중…" : "생성"}
-        </button>
-      </div>
-
-      {/* 결과 */}
-      {(body || status !== "idle") && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-ink">결과</h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => copy(false)}
-                className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-subtle"
-              >
-                {copied ? "복사됨" : "복사"}
-              </button>
-              <button
-                onClick={() => copy(true)}
-                className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-subtle"
-              >
-                플레인 텍스트 복사
-              </button>
-              <button
-                onClick={generate}
-                disabled={status === "streaming"}
-                className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-subtle disabled:opacity-50"
-              >
-                다시 생성
-              </button>
+      {channel === "wordpress" ? (
+        <WordpressGenerator clientId={selectedClientId} planId={planId} />
+      ) : (
+        <>
+          {/* 유형 선택 (스레드) */}
+          {hasContentTypes && (
+            <div className="flex flex-wrap gap-2">
+              <TypeChip
+                active={contentType === "auto"}
+                label="자동 추천"
+                onClick={() => setContentType("auto")}
+              />
+              {THREADS_CONTENT_TYPES.map((t) => (
+                <TypeChip
+                  key={t.key}
+                  active={contentType === t.key}
+                  label={t.label}
+                  onClick={() => setContentType(t.key)}
+                />
+              ))}
             </div>
+          )}
+
+          {/* 입력 */}
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-ink">주제 / 소재</label>
+              <textarea
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                rows={2}
+                placeholder="예: 지역 병원의 네이버 플레이스 상위노출 전략"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-ink">추가 지시 (선택)</label>
+              <textarea
+                value={extra}
+                onChange={(e) => setExtra(e.target.value)}
+                rows={2}
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
+              />
+            </div>
+            <button
+              onClick={generate}
+              disabled={status === "streaming" || !channel || !topic.trim()}
+              className="rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-ink transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {status === "streaming" ? "생성 중…" : "생성"}
+            </button>
           </div>
 
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={18}
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm leading-relaxed outline-none focus:border-accent-deep"
-          />
-
-          {meta && !meta.error && (
-            <p className="text-xs text-muted">
-              토큰: 입력 {meta.inputTokens.toLocaleString()} / 출력{" "}
-              {meta.outputTokens.toLocaleString()} · 라이브러리에 저장됨
-            </p>
-          )}
-          {meta?.error && (
-            <p className="text-xs text-red-600">오류: {meta.error}</p>
-          )}
-
-          {/* 워드프레스 전용 액션 */}
-          {channel === "wordpress" && (
-            <div className="space-y-4 rounded-lg border border-border bg-subtle p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={publishWp}
-                  disabled={wpBusy || !body.trim()}
-                  className="rounded-md bg-accent-deep px-3 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-                >
-                  {wpBusy ? "발행 중…" : "WP 초안으로 발행"}
-                </button>
-                {wpMsg && <span className="text-xs text-muted">{wpMsg}</span>}
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-ink">
-                  이미지 생성 (Gemini)
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    value={imgPrompt}
-                    onChange={(e) => setImgPrompt(e.target.value)}
-                    placeholder="이미지 설명 (예: 병원 대기실, 밝고 깨끗한 분위기)"
-                    className="flex-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent-deep"
-                  />
-                  <button
-                    onClick={genImage}
-                    disabled={imgBusy || !imgPrompt.trim()}
-                    className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-surface disabled:opacity-50"
-                  >
-                    {imgBusy ? "생성 중…" : "생성 후 삽입"}
-                  </button>
+          {/* 네이버: 렌더 미리보기 + 패널 / 스레드: 텍스트 편집 */}
+          {(body || status !== "idle") &&
+            (isNaver && status !== "streaming" && body ? (
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+                <article
+                  className="prose prose-sm max-w-none rounded-lg border border-border bg-surface p-5 prose-headings:text-ink prose-a:text-accent-deep prose-strong:text-ink"
+                  dangerouslySetInnerHTML={{ __html: markdownToBasicHtml(body) }}
+                />
+                <div className="space-y-4">
+                  <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
+                    <h3 className="text-sm font-semibold text-ink">네이버 정보</h3>
+                    <PanelRow
+                      label="글자 수"
+                      value={`${stripMarkdown(body).length.toLocaleString()}자`}
+                    />
+                    <PanelRow
+                      label="[이미지: 설명] 위치"
+                      value={`${naverImageMarkers}곳`}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => copy("formatted")}
+                      className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
+                    >
+                      {copied === "formatted" ? "복사됨" : "서식 유지 복사"}
+                    </button>
+                    <button
+                      onClick={() => copy("plain")}
+                      className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
+                    >
+                      {copied === "plain" ? "복사됨" : "플레인 텍스트 복사"}
+                    </button>
+                    <button
+                      onClick={generate}
+                      className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
+                    >
+                      다시 생성
+                    </button>
+                  </div>
+                  {meta && !meta.error && (
+                    <p className="text-xs text-muted">
+                      토큰 {meta.inputTokens.toLocaleString()} /{" "}
+                      {meta.outputTokens.toLocaleString()} · 라이브러리 저장됨
+                    </p>
+                  )}
                 </div>
-                {imgMsg && <span className="text-xs text-muted">{imgMsg}</span>}
               </div>
-            </div>
-          )}
-        </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold text-ink">결과</h2>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => copy("formatted")}
+                      className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-subtle"
+                    >
+                      {copied === "formatted" ? "복사됨" : "복사"}
+                    </button>
+                    <button
+                      onClick={() => copy("plain")}
+                      className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-subtle"
+                    >
+                      플레인 복사
+                    </button>
+                    <button
+                      onClick={generate}
+                      disabled={status === "streaming"}
+                      className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-subtle disabled:opacity-50"
+                    >
+                      다시 생성
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  rows={18}
+                  className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-sm leading-relaxed outline-none focus:border-accent-deep"
+                />
+                {meta && !meta.error && (
+                  <p className="text-xs text-muted">
+                    토큰: 입력 {meta.inputTokens.toLocaleString()} / 출력{" "}
+                    {meta.outputTokens.toLocaleString()} · 라이브러리에 저장됨
+                  </p>
+                )}
+                {meta?.error && (
+                  <p className="text-xs text-red-600">오류: {meta.error}</p>
+                )}
+              </div>
+            ))}
+        </>
       )}
+    </div>
+  );
+}
+
+function TypeChip({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "rounded-full border px-3 py-1 text-xs font-medium",
+        active
+          ? "border-accent-deep bg-tint text-accent-deep"
+          : "border-border text-muted hover:bg-subtle",
+      ].join(" ")}
+    >
+      {label}
+    </button>
+  );
+}
+
+function PanelRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="mb-0.5 text-xs font-medium text-muted">{label}</p>
+      <p className="rounded-md bg-subtle px-2.5 py-1.5 text-sm text-ink">
+        {value}
+      </p>
     </div>
   );
 }
