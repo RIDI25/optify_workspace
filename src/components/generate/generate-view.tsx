@@ -11,6 +11,7 @@ import {
   type StreamMeta,
 } from "@/lib/generation/stream-protocol";
 import { WordpressGenerator } from "@/components/generate/wordpress-generator";
+import { SendToPlanFooter } from "@/components/generate/send-to-plan";
 import type { ChannelSettings } from "@/types/database";
 
 export function GenerateView() {
@@ -165,7 +166,19 @@ export function GenerateView() {
       </div>
 
       {channel === "wordpress" ? (
-        <WordpressGenerator clientId={selectedClientId} planId={planId} />
+        <WordpressGenerator
+          clientId={selectedClientId}
+          planId={planId}
+          renderPlanFooter={(ctx) => (
+            <SendToPlanFooter
+              clientId={selectedClientId}
+              planId={planId}
+              channel={ctx.channel}
+              title={ctx.title}
+              contentId={ctx.contentId}
+            />
+          )}
+        />
       ) : (
         <>
           {/* 유형 선택 (스레드) */}
@@ -263,6 +276,15 @@ export function GenerateView() {
                       {meta.outputTokens.toLocaleString()} · 라이브러리 저장됨
                     </p>
                   )}
+                  {status === "done" && meta?.contentId && (
+                    <SendToPlanFooter
+                      clientId={selectedClientId}
+                      planId={planId}
+                      channel={channel}
+                      title={topic.trim().slice(0, 120)}
+                      contentId={meta.contentId}
+                    />
+                  )}
                 </div>
               </div>
             ) : (
@@ -305,6 +327,17 @@ export function GenerateView() {
                 )}
                 {meta?.error && (
                   <p className="text-xs text-red-600">오류: {meta.error}</p>
+                )}
+                {status === "done" && meta?.contentId && (
+                  <div className="max-w-xs">
+                    <SendToPlanFooter
+                      clientId={selectedClientId}
+                      planId={planId}
+                      channel={channel}
+                      title={topic.trim().slice(0, 120)}
+                      contentId={meta.contentId}
+                    />
+                  </div>
                 )}
               </div>
             ))}
