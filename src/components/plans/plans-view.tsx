@@ -274,7 +274,14 @@ export function PlansView() {
                 </p>
               )}
               {(() => {
-                const genHref = `/generate?planId=${selected.id}&channel=${selected.channel}&title=${encodeURIComponent(selected.title)}`;
+                const linkedKeyword = selected.keyword_id
+                  ? keywords[selected.keyword_id]
+                  : undefined;
+                const genHref =
+                  `/generate?planId=${selected.id}&channel=${selected.channel}&title=${encodeURIComponent(selected.title)}` +
+                  (linkedKeyword
+                    ? `&keyword=${encodeURIComponent(linkedKeyword)}`
+                    : "");
                 const linkedId = contentByPlan[selected.id];
                 if (linkedId) {
                   return (

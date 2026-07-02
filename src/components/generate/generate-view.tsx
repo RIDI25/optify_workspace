@@ -169,7 +169,12 @@ export function GenerateView() {
       </div>
 
       {channel === "wordpress" ? (
-        <WordpressGenerator clientId={selectedClientId} planId={planId} />
+        <WordpressGenerator
+          clientId={selectedClientId}
+          planId={planId}
+          initialTopic={topic}
+          initialKeyword={searchParams.get("keyword") ?? ""}
+        />
       ) : (
         <>
           {/* 유형 선택 (스레드) */}

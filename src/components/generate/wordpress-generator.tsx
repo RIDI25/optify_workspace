@@ -36,12 +36,17 @@ function faqToHtml(faq: { question: string; answer: string }[]): string {
 export function WordpressGenerator({
   clientId,
   planId,
+  initialTopic,
+  initialKeyword,
 }: {
   clientId: string;
   planId: string | null;
+  /** 플랜에서 진입 시 제목/키워드 프리필 [AUDIT H-3] */
+  initialTopic?: string;
+  initialKeyword?: string;
 }) {
-  const [topic, setTopic] = useState("");
-  const [keyword, setKeyword] = useState("");
+  const [topic, setTopic] = useState(() => initialTopic ?? "");
+  const [keyword, setKeyword] = useState(() => initialKeyword ?? "");
   const [extra, setExtra] = useState("");
 
   const [phase, setPhase] = useState<Phase>("idle");
