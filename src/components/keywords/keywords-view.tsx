@@ -18,6 +18,8 @@ export function KeywordsView() {
   const [ideas, setIdeas] = useState<KeywordIdea[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [error, setError] = useState("");
+  const [searched, setSearched] = useState(false);
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -68,6 +70,8 @@ export function KeywordsView() {
     if (list.length === 0) return;
     setBusy(true);
     setMsg("");
+    setError("");
+    setSearched(false);
     setSelected(new Set());
     try {
       const res = await fetch("/api/keywords/ideas", {
@@ -79,11 +83,14 @@ export function KeywordsView() {
       if (data.ok) {
         setIdeas(data.ideas as KeywordIdea[]);
         setMsg(`${data.ideas.length}개 조회됨`);
+        setSearched(true);
       } else {
-        setMsg(`실패: ${data.error}`);
+        setIdeas([]);
+        setError(data.error || "조회에 실패했습니다.");
       }
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "조회 실패");
+      setIdeas([]);
+      setError(e instanceof Error ? e.message : "조회 실패");
     } finally {
       setBusy(false);
     }
@@ -170,6 +177,19 @@ export function KeywordsView() {
             {msg && <span className="ml-3 text-xs text-muted">{msg}</span>}
           </div>
 
+          {error && (
+            <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
+              오류: {error}
+            </p>
+          )}
+
+          {!error && searched && ideas.length === 0 && (
+            <p className="rounded-md bg-subtle px-3 py-2 text-sm text-muted">
+              조회 결과가 없습니다. 더 일반적이거나 다른 시드 키워드로 다시
+              시도해보세요. (예: &quot;마케팅&quot;, &quot;피부과&quot;)
+            </p>
+          )}
+
           {ideas.length > 0 && (
             <>
               <div className="flex flex-wrap items-center gap-3">
@@ -252,7 +272,7 @@ function KeywordTable({
             <th className="px-3 py-2">키워드</th>
             <th className="px-3 py-2 text-right">월 검색량</th>
             <th className="px-3 py-2">경쟁도</th>
-            <th className="px-3 py-2 text-right">CPC (저~고)</th>
+            <th className="px-3 py-2 text-right">CPC 저~고 (계정통화)</th>
             {rows[0]?.status !== undefined && <th className="px-3 py-2">상태</th>}
           </tr>
         </thead>
@@ -275,7 +295,7 @@ function KeywordTable({
               <td className="px-3 py-2 text-muted">{r.competition ?? "-"}</td>
               <td className="px-3 py-2 text-right font-mono text-muted">
                 {r.cpcLow != null && r.cpcHigh != null
-                  ? `$${r.cpcLow.toFixed(2)}~$${r.cpcHigh.toFixed(2)}`
+                  ? `${Math.round(r.cpcLow).toLocaleString()}~${Math.round(r.cpcHigh).toLocaleString()}`
                   : "-"}
               </td>
               {r.status !== undefined && (
