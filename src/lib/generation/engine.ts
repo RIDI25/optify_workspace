@@ -87,6 +87,16 @@ export function buildSystemPrompt(input: GenerateInput): string {
     ].join("\n"),
   );
 
+  if (input.channel === "threads") {
+    parts.push(
+      [
+        "[자연스러움 검증]",
+        "  - 출력 전에 각 문장을 소리 내 읽었을 때 실제 한국인이 스레드에 쓸 법한 문장인지 검증하세요.",
+        "  - 번역투·문어체가 섞였으면 실제 통용되는 구어체로 고쳐 쓰세요.",
+      ].join("\n"),
+    );
+  }
+
   return parts.filter(Boolean).join("\n\n");
 }
 
