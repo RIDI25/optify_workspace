@@ -33,6 +33,12 @@ export function GenerateView() {
   const [meta, setMeta] = useState<StreamMeta | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const [wpMsg, setWpMsg] = useState<string>("");
+  const [wpBusy, setWpBusy] = useState(false);
+  const [imgPrompt, setImgPrompt] = useState("");
+  const [imgBusy, setImgBusy] = useState(false);
+  const [imgMsg, setImgMsg] = useState("");
+
   // 선택 클라이언트의 활성 채널 로드
   useEffect(() => {
     if (!selectedClientId) return;
@@ -112,6 +118,59 @@ export function GenerateView() {
     } catch (e) {
       setStatus("error");
       setBody(e instanceof Error ? e.message : "생성 실패");
+    }
+  }
+
+  async function publishWp() {
+    if (!selectedClientId || !body.trim()) return;
+    setWpBusy(true);
+    setWpMsg("");
+    try {
+      const res = await fetch("/api/wordpress/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: selectedClientId,
+          title: topic.trim().slice(0, 120),
+          body,
+          contentId: meta?.contentId ?? null,
+        }),
+      });
+      const data = await res.json();
+      setWpMsg(
+        data.ok
+          ? `WP 초안 발행 완료 (post #${data.wpPostId})`
+          : `실패: ${data.error}`,
+      );
+    } catch (e) {
+      setWpMsg(e instanceof Error ? e.message : "발행 실패");
+    } finally {
+      setWpBusy(false);
+    }
+  }
+
+  async function genImage() {
+    if (!imgPrompt.trim()) return;
+    setImgBusy(true);
+    setImgMsg("");
+    try {
+      const res = await fetch("/api/images/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: selectedClientId, prompt: imgPrompt }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setBody((b) => `${b}\n\n![${imgPrompt}](${data.url})`);
+        setImgMsg("본문 하단에 이미지 삽입됨");
+        setImgPrompt("");
+      } else {
+        setImgMsg(`실패: ${data.error}`);
+      }
+    } catch (e) {
+      setImgMsg(e instanceof Error ? e.message : "이미지 생성 실패");
+    } finally {
+      setImgBusy(false);
     }
   }
 
@@ -271,6 +330,44 @@ export function GenerateView() {
           )}
           {meta?.error && (
             <p className="text-xs text-red-600">오류: {meta.error}</p>
+          )}
+
+          {/* 워드프레스 전용 액션 */}
+          {channel === "wordpress" && (
+            <div className="space-y-4 rounded-lg border border-border bg-subtle p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={publishWp}
+                  disabled={wpBusy || !body.trim()}
+                  className="rounded-md bg-accent-deep px-3 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {wpBusy ? "발행 중…" : "WP 초안으로 발행"}
+                </button>
+                {wpMsg && <span className="text-xs text-muted">{wpMsg}</span>}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-ink">
+                  이미지 생성 (Gemini)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    value={imgPrompt}
+                    onChange={(e) => setImgPrompt(e.target.value)}
+                    placeholder="이미지 설명 (예: 병원 대기실, 밝고 깨끗한 분위기)"
+                    className="flex-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent-deep"
+                  />
+                  <button
+                    onClick={genImage}
+                    disabled={imgBusy || !imgPrompt.trim()}
+                    className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-surface disabled:opacity-50"
+                  >
+                    {imgBusy ? "생성 중…" : "생성 후 삽입"}
+                  </button>
+                </div>
+                {imgMsg && <span className="text-xs text-muted">{imgMsg}</span>}
+              </div>
+            </div>
           )}
         </div>
       )}
