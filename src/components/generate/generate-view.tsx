@@ -40,7 +40,8 @@ export function GenerateView() {
     const supabase = createClient();
     supabase
       .from("channel_settings")
-      .select("*")
+      // 필요한 컬럼만 — wp_app_password_encrypted 등 비밀 컬럼을 브라우저로 내리지 않는다 [AUDIT H-2]
+      .select("id, channel")
       .eq("client_id", selectedClientId)
       .eq("is_active", true)
       .then(({ data }) => {
