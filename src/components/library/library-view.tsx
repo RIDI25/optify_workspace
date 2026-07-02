@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { CHANNELS, channelLabel } from "@/lib/channels";
@@ -9,6 +10,8 @@ import type { Content, Profile } from "@/types/database";
 
 export function LibraryView() {
   const { selectedClientId, selectedClient } = useClientContext();
+  const searchParams = useSearchParams();
+  const deepLinkId = searchParams.get("contentId");
   const [contents, setContents] = useState<Content[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selected, setSelected] = useState<Content | null>(null);
@@ -35,8 +38,15 @@ export function LibraryView() {
       .select("*")
       .eq("client_id", selectedClientId)
       .order("created_at", { ascending: false })
-      .then(({ data }) => setContents((data ?? []) as Content[]));
-  }, [selectedClientId]);
+      .then(({ data }) => {
+        const rows = (data ?? []) as Content[];
+        setContents(rows);
+        if (deepLinkId) {
+          const match = rows.find((c) => c.id === deepLinkId);
+          if (match) setSelected(match);
+        }
+      });
+  }, [selectedClientId, deepLinkId]);
 
   const profileName = (id: string | null) =>
     profiles.find((p) => p.id === id)?.name ?? "-";

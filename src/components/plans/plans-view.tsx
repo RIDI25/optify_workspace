@@ -20,6 +20,8 @@ export function PlansView() {
   const [plans, setPlans] = useState<ContentPlan[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [keywords, setKeywords] = useState<Record<string, string>>({});
+  // plan_id → 연결된 콘텐츠 id (있으면 '생성물 보기')
+  const [contentByPlan, setContentByPlan] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<ContentPlan | null>(null);
 
   const [fStatus, setFStatus] = useState("");
@@ -52,6 +54,19 @@ export function PlansView() {
           map[k.id] = k.keyword;
         }
         setKeywords(map);
+      });
+    supabase
+      .from("contents")
+      .select("id, plan_id")
+      .eq("client_id", selectedClientId)
+      .not("plan_id", "is", null)
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        for (const c of (data ?? []) as { id: string; plan_id: string }[]) {
+          // 한 플랜에 여러 콘텐츠면 최신 것 하나(마지막)로
+          map[c.plan_id] = c.id;
+        }
+        setContentByPlan(map);
       });
   }, [selectedClientId]);
 
@@ -258,12 +273,31 @@ export function PlansView() {
                   {selected.memo}
                 </p>
               )}
-              <Link
-                href={`/generate?planId=${selected.id}&channel=${selected.channel}&title=${encodeURIComponent(selected.title)}`}
-                className="block rounded-md bg-accent px-3 py-2 text-center text-sm font-semibold text-ink hover:opacity-90"
-              >
-                이 플랜으로 생성
-              </Link>
+              {(() => {
+                const genHref = `/generate?planId=${selected.id}&channel=${selected.channel}&title=${encodeURIComponent(selected.title)}`;
+                const linkedId = contentByPlan[selected.id];
+                if (linkedId) {
+                  return (
+                    <div className="space-y-2">
+                      <Link
+                        href={`/library?contentId=${linkedId}`}
+                        className="block rounded-md bg-accent px-3 py-2 text-center text-sm font-semibold text-ink hover:opacity-90"
+                      >
+                        생성물 보기
+                      </Link>
+                      <NewGenLink href={genHref} />
+                    </div>
+                  );
+                }
+                return (
+                  <Link
+                    href={genHref}
+                    className="block rounded-md bg-accent px-3 py-2 text-center text-sm font-semibold text-ink hover:opacity-90"
+                  >
+                    이 플랜으로 생성
+                  </Link>
+                );
+              })()}
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">
@@ -273,6 +307,24 @@ export function PlansView() {
         </div>
       </div>
     </div>
+  );
+}
+
+function NewGenLink({ href }: { href: string }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <Link
+      href={confirm ? href : "#"}
+      onClick={(e) => {
+        if (!confirm) {
+          e.preventDefault();
+          setConfirm(true);
+        }
+      }}
+      className="block rounded-md border border-border px-3 py-2 text-center text-sm text-muted hover:bg-subtle"
+    >
+      {confirm ? "이미 생성된 콘텐츠가 있습니다. 새로 생성할까요?" : "새로 생성"}
+    </Link>
   );
 }
 
