@@ -22,6 +22,7 @@ export function SendToPlanFooter({
   const [status, setStatus] = useState<"idea" | "writing">("idea");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState(""); // 저장 실패 알림 [AUDIT M-5]
 
   // 이미 플랜에서 진입한 생성물이면 되돌아가기만 제공
   if (planId) {
@@ -48,18 +49,26 @@ export function SendToPlanFooter({
 
   async function save() {
     setBusy(true);
-    const res = await sendToPlan({
-      clientId,
-      channel,
-      title,
-      contentId,
-      scheduledDate: date || null,
-      status,
-    });
-    setBusy(false);
-    if (res.ok) {
-      setDone(true);
-      setOpen(false);
+    setError("");
+    try {
+      const res = await sendToPlan({
+        clientId,
+        channel,
+        title,
+        contentId,
+        scheduledDate: date || null,
+        status,
+      });
+      if (res.ok) {
+        setDone(true);
+        setOpen(false);
+      } else {
+        setError(res.error ?? "저장에 실패했습니다.");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "저장에 실패했습니다.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -102,6 +111,12 @@ export function SendToPlanFooter({
                 <option value="writing">작성 중</option>
               </select>
             </div>
+
+            {error && (
+              <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
+                {error}
+              </p>
+            )}
 
             <div className="flex justify-end gap-2">
               <button

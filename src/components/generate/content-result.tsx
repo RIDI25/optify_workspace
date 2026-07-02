@@ -19,6 +19,8 @@ export interface ContentResultData {
   /** 네이버 라이브 생성 중 진행 표시(선택) */
   imagesGenerating?: boolean;
   imagesProgress?: { current: number; total: number };
+  /** 이미지 파이프라인 실패/부분 실패 알림 [AUDIT M-5] */
+  imagesNotice?: string;
   /** WP 발행 버튼 노출 */
   canPublish?: boolean;
   /** 저장된 발행 완료 시각 (라이브러리에서 전달) [AUDIT M-1] */
@@ -250,23 +252,29 @@ export function ContentResultView(props: ContentResultData) {
           </div>
         )}
 
-        {/* 생성 이미지 (네이버: 다운로드/복사용) */}
-        {isNaver && (props.imagesGenerating || images.length > 0) && (
-          <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
-            <h3 className="text-sm font-semibold text-ink">생성 이미지</h3>
-            {props.imagesGenerating && (
-              <p className="text-sm text-muted">
-                이미지 생성 중…{" "}
-                {props.imagesProgress
-                  ? `(${props.imagesProgress.current}/${props.imagesProgress.total})`
-                  : ""}
-              </p>
-            )}
-            {images.map((img, i) => (
-              <ImageCard key={i} img={img} />
-            ))}
-          </div>
-        )}
+        {/* 생성 이미지 (네이버: 다운로드/복사용) — 실패 시에도 블록 유지해 알림 표시 */}
+        {isNaver &&
+          (props.imagesGenerating || images.length > 0 || props.imagesNotice) && (
+            <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
+              <h3 className="text-sm font-semibold text-ink">생성 이미지</h3>
+              {props.imagesGenerating && (
+                <p className="text-sm text-muted">
+                  이미지 생성 중…{" "}
+                  {props.imagesProgress
+                    ? `(${props.imagesProgress.current}/${props.imagesProgress.total})`
+                    : ""}
+                </p>
+              )}
+              {props.imagesNotice && (
+                <p className="rounded-md bg-red-50 px-2.5 py-1.5 text-xs text-red-600">
+                  {props.imagesNotice}
+                </p>
+              )}
+              {images.map((img, i) => (
+                <ImageCard key={i} img={img} />
+              ))}
+            </div>
+          )}
 
         {/* 발행 완료 수동 표시 — 대시보드·리포트 발행 집계에 반영 [AUDIT M-1] */}
         {props.contentId && (

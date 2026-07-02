@@ -25,6 +25,7 @@ export function NaverResult({
   const [images, setImages] = useState<ContentImage[]>([]);
   const [generating, setGenerating] = useState(true);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [notice, setNotice] = useState(""); // 실패/부분 실패 알림 [AUDIT M-5]
   const started = useRef(false);
 
   useEffect(() => {
@@ -39,15 +40,20 @@ export function NaverResult({
           body: JSON.stringify({ clientId, keyword: title, body }),
         });
         const pd = await pr.json();
+        if (!pd.ok) {
+          setNotice(`이미지 프롬프트 생성 실패: ${pd.error ?? "알 수 없음"}`);
+          return;
+        }
         const prompts: { prompt: string; alt_text: string; filename: string }[] =
-          pd.ok && Array.isArray(pd.image_prompts) ? pd.image_prompts : [];
+          Array.isArray(pd.image_prompts) ? pd.image_prompts : [];
 
         if (prompts.length === 0) {
-          setGenerating(false);
+          setNotice("생성할 이미지 프롬프트가 없습니다.");
           return;
         }
         setProgress({ current: 0, total: prompts.length });
         const collected: ContentImage[] = [];
+        let failed = 0;
         for (let i = 0; i < prompts.length; i++) {
           setProgress({ current: i + 1, total: prompts.length });
           try {
@@ -69,14 +75,21 @@ export function NaverResult({
                 filename: d.filename || prompts[i].filename,
               });
               setImages([...collected]);
+            } else {
+              failed++;
             }
           } catch {
-            // 개별 실패 건너뜀
+            failed++;
           }
+        }
+        if (failed > 0) {
+          setNotice(`이미지 ${prompts.length}장 중 ${failed}장 생성 실패`);
         }
         if (contentId && collected.length > 0) {
           await saveContentAssets(contentId, { images: collected });
         }
+      } catch (e) {
+        setNotice(e instanceof Error ? e.message : "이미지 생성 실패");
       } finally {
         setGenerating(false);
       }
@@ -95,6 +108,7 @@ export function NaverResult({
       images={images}
       imagesGenerating={generating}
       imagesProgress={progress}
+      imagesNotice={notice}
     />
   );
 }

@@ -68,6 +68,7 @@ export function ReportsView() {
 
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
+  const [summaryMsg, setSummaryMsg] = useState(""); // 총평 실패 알림 [AUDIT M-5]
   const [saveMsg, setSaveMsg] = useState("");
 
   useEffect(() => {
@@ -169,6 +170,7 @@ export function ReportsView() {
   async function genSummary() {
     if (!selectedClientId) return;
     setLoadingSummary(true);
+    setSummaryMsg("");
     try {
       const res = await fetch("/api/reports/summary", {
         method: "POST",
@@ -180,7 +182,13 @@ export function ReportsView() {
         }),
       });
       const d = await res.json();
-      if (d.ok) setSummary(d.summary);
+      if (d.ok) {
+        setSummary(d.summary);
+      } else {
+        setSummaryMsg(`총평 생성 실패: ${d.error ?? "알 수 없음"}`);
+      }
+    } catch (e) {
+      setSummaryMsg(e instanceof Error ? e.message : "총평 생성 실패");
     } finally {
       setLoadingSummary(false);
     }
@@ -257,6 +265,11 @@ export function ReportsView() {
         >
           {loadingSummary ? "생성 중…" : "AI 총평 생성"}
         </button>
+        {summaryMsg && (
+          <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
+            {summaryMsg}
+          </p>
+        )}
         <textarea
           value={summary}
           onChange={(e) => setSummary(e.target.value)}

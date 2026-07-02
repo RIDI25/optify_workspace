@@ -54,6 +54,7 @@ export function WordpressGenerator({
   const [result, setResult] = useState<WpResult | null>(null);
   const [images, setImages] = useState<ContentImage[]>([]);
   const [imgProgress, setImgProgress] = useState({ current: 0, total: 0 });
+  const [imgNotice, setImgNotice] = useState(""); // 이미지 부분 실패 알림 [AUDIT M-5]
   const [finalHtml, setFinalHtml] = useState("");
   const [error, setError] = useState("");
 
@@ -74,7 +75,9 @@ export function WordpressGenerator({
 
     setPhase("images");
     setImgProgress({ current: 0, total: prompts.length });
+    setImgNotice("");
     const collected: ContentImage[] = [];
+    let failed = 0;
 
     for (let i = 0; i < prompts.length; i++) {
       setImgProgress({ current: i + 1, total: prompts.length });
@@ -97,10 +100,15 @@ export function WordpressGenerator({
             filename: d.filename || prompts[i].filename,
           });
           setImages([...collected]);
+        } else {
+          failed++;
         }
       } catch {
-        // 개별 이미지 실패는 건너뜀
+        failed++;
       }
+    }
+    if (failed > 0) {
+      setImgNotice(`이미지 ${prompts.length}장 중 ${failed}장 생성 실패 — 나머지로 본문을 구성했습니다.`);
     }
 
     const html = assembleHtmlWithImages(data.content_html, collected) + faqToHtml(data.faq);
@@ -237,6 +245,11 @@ export function WordpressGenerator({
   if (!result) return null;
   return (
     <div className="space-y-3">
+      {imgNotice && (
+        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
+          {imgNotice}
+        </p>
+      )}
       <ContentResultView
         channel="wordpress"
         clientId={clientId}
