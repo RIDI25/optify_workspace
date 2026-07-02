@@ -18,9 +18,12 @@ export function GenerateView() {
   const planId = searchParams.get("planId");
 
   const [channels, setChannels] = useState<ChannelSettings[]>([]);
-  const [channel, setChannel] = useState<string>("");
+  // 플랜에서 진입 시 채널/주제 프리필 (쿼리 파라미터에서 1회 초기화)
+  const [channel, setChannel] = useState<string>(
+    () => searchParams.get("channel") ?? "",
+  );
   const [contentType, setContentType] = useState<string>("auto");
-  const [topic, setTopic] = useState("");
+  const [topic, setTopic] = useState(() => searchParams.get("title") ?? "");
   const [extra, setExtra] = useState("");
 
   const [body, setBody] = useState("");
@@ -29,14 +32,6 @@ export function GenerateView() {
   );
   const [meta, setMeta] = useState<StreamMeta | null>(null);
   const [copied, setCopied] = useState(false);
-
-  // 프리필: 플랜에서 진입 시 채널/주제 세팅
-  useEffect(() => {
-    const planChannel = searchParams.get("channel");
-    const planTitle = searchParams.get("title");
-    if (planChannel) setChannel(planChannel);
-    if (planTitle) setTopic(planTitle);
-  }, [searchParams]);
 
   // 선택 클라이언트의 활성 채널 로드
   useEffect(() => {
