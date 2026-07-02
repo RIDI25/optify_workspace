@@ -9,8 +9,16 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.109.1",
+    "@fullcalendar/core": "^6.1.21",
+    "@fullcalendar/daygrid": "^6.1.21",
+    "@fullcalendar/interaction": "^6.1.21",
+    "@fullcalendar/react": "^6.1.21",
+    "@react-pdf/renderer": "^4.5.1",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.110.0",
+    "date-fns": "^4.4.0",
+    "docx": "^9.7.1",
     "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4"
