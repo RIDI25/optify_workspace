@@ -184,6 +184,34 @@ export function buildImagePromptsPrompt(input: {
   return { system, user };
 }
 
+/**
+ * 저장된 키워드 → 채널별 콘텐츠 주제(제목안) 제안 프롬프트.
+ * 해당 클라이언트·채널의 페르소나·타겟 독자를 반영해 실제 그 채널에 맞는 주제가 나오게 한다.
+ */
+export function buildTopicsPrompt(input: {
+  channel: string;
+  preset: Record<string, unknown>;
+  keywords: string[];
+}): { system: string; user: string } {
+  const persona = String(input.preset.persona ?? "");
+  const target = String(input.preset.target_reader ?? "일반 독자");
+  const system = [
+    brandRulesBlock(),
+    `너는 옵티파이의 ${input.channel} 콘텐츠 기획자다.`,
+    persona ? `[페르소나]\n  ${persona}` : "",
+    `[대상 독자]\n  ${target}`,
+    [
+      "주어진 키워드들을 소재로, 이 채널·독자에 실제로 맞는 콘텐츠 주제(제목안)를 5~10개 제안한다.",
+      "각 제목은 클릭하고 싶게, 채널 톤에 맞게. 근거 없는 수치 금지.",
+      '출력은 JSON 배열 문자열만: ["제목1", "제목2", …] (코드블록·설명 금지).',
+    ].join("\n"),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const user = `키워드:\n${input.keywords.map((k) => `- ${k}`).join("\n")}`;
+  return { system, user };
+}
+
 /** 부분 수정용 프롬프트 (선택 텍스트 + 지시 → 전체 본문 재작성) */
 export function buildRefinePrompt(
   fullBody: string,

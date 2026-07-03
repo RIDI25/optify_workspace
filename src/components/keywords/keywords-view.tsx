@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { getChannel } from "@/lib/channels";
-import { addKeywordsToPlan } from "@/lib/actions/keywords";
+import { addKeywordsToPlan, addTopicToPlan } from "@/lib/actions/keywords";
 import type { KeywordIdea } from "@/lib/google-ads";
 import type { ChannelSettings, Keyword } from "@/types/database";
 
@@ -26,6 +26,14 @@ export function KeywordsView() {
   const [channels, setChannels] = useState<ChannelSettings[]>([]);
   const [channel, setChannel] = useState("");
   const [pool, setPool] = useState<Keyword[]>([]);
+
+  // 저장된 풀 → 주제 뽑기 [Feature 4]
+  const [poolSel, setPoolSel] = useState<Set<string>>(new Set());
+  const [topicChannel, setTopicChannel] = useState("");
+  const [topics, setTopics] = useState<string[]>([]);
+  const [topicBusy, setTopicBusy] = useState(false);
+  const [topicMsg, setTopicMsg] = useState("");
+  const [addedTopics, setAddedTopics] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!selectedClientId) return;
@@ -126,6 +134,54 @@ export function KeywordsView() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // ── 주제 뽑기 [Feature 4] ──
+  const tChannel = topicChannel || channels[0]?.channel || "";
+  function togglePool(id: string) {
+    setPoolSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  async function genTopics() {
+    if (!selectedClientId || !tChannel || poolSel.size === 0) return;
+    setTopicBusy(true);
+    setTopicMsg("");
+    setTopics([]);
+    setAddedTopics(new Set());
+    try {
+      const kws = pool.filter((k) => poolSel.has(k.id)).map((k) => k.keyword);
+      const res = await fetch("/api/keywords/topics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: selectedClientId, channel: tChannel, keywords: kws }),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setTopics(d.topics as string[]);
+        if (!d.topics.length) setTopicMsg("주제가 생성되지 않았습니다.");
+      } else {
+        setTopicMsg(`실패: ${d.error}`);
+      }
+    } catch (e) {
+      setTopicMsg(e instanceof Error ? e.message : "주제 생성 실패");
+    } finally {
+      setTopicBusy(false);
+    }
+  }
+  async function addTopic(title: string) {
+    if (!selectedClientId || !tChannel) return;
+    const firstKwId = pool.find((k) => poolSel.has(k.id))?.id ?? null;
+    const r = await addTopicToPlan({
+      clientId: selectedClientId,
+      channel: tChannel,
+      title,
+      keywordId: firstKwId,
+    });
+    if (r.ok) setAddedTopics((prev) => new Set(prev).add(title));
   }
 
   if (!selectedClientId) {
@@ -232,20 +288,93 @@ export function KeywordsView() {
       )}
 
       {tab === "pool" && (
-        <div>
+        <div className="space-y-4">
           {pool.length === 0 ? (
             <p className="text-sm text-muted">저장된 키워드가 없습니다.</p>
           ) : (
-            <KeywordTable
-              rows={pool.map((k) => ({
-                keyword: k.keyword,
-                avgMonthlySearches: k.avg_monthly_searches,
-                competition: k.competition,
-                cpcLow: k.cpc_low,
-                cpcHigh: k.cpc_high,
-                status: k.status,
-              }))}
-            />
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                <select
+                  value={tChannel}
+                  onChange={(e) => setTopicChannel(e.target.value)}
+                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+                >
+                  {channels.map((c) => (
+                    <option key={c.id} value={c.channel}>
+                      {getChannel(c.channel)?.label ?? c.channel}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={genTopics}
+                  disabled={topicBusy || poolSel.size === 0}
+                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50"
+                >
+                  {topicBusy ? "생성 중…" : `주제 뽑기 (${poolSel.size})`}
+                </button>
+                {topicMsg && <span className="text-xs text-muted">{topicMsg}</span>}
+              </div>
+
+              {/* 저장된 키워드 (선택) */}
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-subtle text-left text-xs text-muted">
+                    <tr>
+                      <th className="w-10 px-3 py-2"></th>
+                      <th className="px-3 py-2">키워드</th>
+                      <th className="px-3 py-2 text-right">월 검색량</th>
+                      <th className="px-3 py-2">경쟁도</th>
+                      <th className="px-3 py-2">상태</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pool.map((k) => (
+                      <tr key={k.id} className="border-t border-border">
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={poolSel.has(k.id)}
+                            onChange={() => togglePool(k.id)}
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-medium text-ink">{k.keyword}</td>
+                        <td className="px-3 py-2 text-right font-mono">
+                          {k.avg_monthly_searches?.toLocaleString() ?? "-"}
+                        </td>
+                        <td className="px-3 py-2 text-muted">{k.competition ?? "-"}</td>
+                        <td className="px-3 py-2 text-muted">{k.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* 주제안 결과 */}
+              {topics.length > 0 && (
+                <div className="space-y-2 rounded-lg border border-border bg-surface p-4">
+                  <h3 className="text-sm font-semibold text-ink">
+                    주제안 ({getChannel(tChannel)?.label ?? tChannel})
+                  </h3>
+                  <ul className="space-y-1.5">
+                    {topics.map((t, i) => (
+                      <li
+                        key={i}
+                        className="flex items-center justify-between gap-3 rounded-md bg-subtle px-3 py-2"
+                      >
+                        <span className="text-sm text-ink">{t}</span>
+                        <button
+                          onClick={() => addTopic(t)}
+                          disabled={addedTopics.has(t)}
+                          className="shrink-0 rounded-md border border-accent-deep px-2.5 py-1 text-xs font-medium text-accent-deep hover:bg-tint disabled:opacity-50"
+                        >
+                          {addedTopics.has(t) ? "추가됨" : "플랜에 추가"}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

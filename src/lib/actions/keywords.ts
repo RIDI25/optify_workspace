@@ -59,3 +59,28 @@ export async function addKeywordsToPlan(
   if (planErr) return { ok: false, count: 0, error: planErr.message };
   return { ok: true, count: kws.length };
 }
+
+/** 생성된 주제(제목안)를 플랜에 추가. 선택 채널 + (선택) 키워드 연결. */
+export async function addTopicToPlan(input: {
+  clientId: string;
+  channel: string;
+  title: string;
+  keywordId?: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { data: cs } = await supabase
+    .from("channel_settings")
+    .select("default_assignee")
+    .eq("client_id", input.clientId)
+    .eq("channel", input.channel)
+    .single();
+  const { error } = await supabase.from("content_plans").insert({
+    client_id: input.clientId,
+    keyword_id: input.keywordId ?? null,
+    title: input.title,
+    channel: input.channel,
+    status: "idea",
+    assignee: cs?.default_assignee ?? null,
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
