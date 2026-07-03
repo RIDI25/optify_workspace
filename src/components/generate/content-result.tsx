@@ -495,7 +495,7 @@ export function ContentResultView(props: ContentResultData) {
   );
 }
 
-function ApprovalBadge({ status }: { status: ApprovalStatus }) {
+export function ApprovalBadge({ status }: { status: ApprovalStatus }) {
   const map: Record<ApprovalStatus, { label: string; cls: string }> = {
     pending: { label: "승인 대기", cls: "bg-subtle text-muted" },
     approved: { label: "승인됨", cls: "bg-tint text-accent-deep" },
@@ -509,7 +509,7 @@ function ApprovalBadge({ status }: { status: ApprovalStatus }) {
   );
 }
 
-function CommentThread({
+export function CommentThread({
   contentId,
   meId,
 }: {

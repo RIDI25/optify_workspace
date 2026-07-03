@@ -10,8 +10,33 @@ import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { CHANNELS, getChannel, channelLabel } from "@/lib/channels";
 import { PLAN_STATUSES, planStatusLabel } from "@/lib/plan-status";
-import { deletePlan } from "@/lib/actions/contents";
-import type { ContentPlan, Profile } from "@/types/database";
+import { deletePlan, approveContent } from "@/lib/actions/contents";
+import {
+  ApprovalBadge,
+  CommentThread,
+} from "@/components/generate/content-result";
+import { stripMarkdown } from "@/lib/text";
+import type {
+  ApprovalStatus,
+  ContentPlan,
+  Profile,
+} from "@/types/database";
+
+interface LinkedContent {
+  id: string;
+  approval_status: ApprovalStatus;
+  title: string | null;
+  body: string;
+  channel: string;
+  created_at: string;
+}
+
+function previewText(body: string): string {
+  return stripMarkdown(body.replace(/<[^>]+>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 220);
+}
 
 type View = "calendar" | "list";
 
@@ -21,15 +46,22 @@ export function PlansView() {
   const [plans, setPlans] = useState<ContentPlan[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [keywords, setKeywords] = useState<Record<string, string>>({});
-  // plan_id → 연결된 콘텐츠 id (있으면 '생성물 보기')
-  const [contentByPlan, setContentByPlan] = useState<Record<string, string>>({});
+  // plan_id → 연결된 콘텐츠 목록(최신순)
+  const [contentsByPlan, setContentsByPlan] = useState<
+    Record<string, LinkedContent[]>
+  >({});
   const [selected, setSelected] = useState<ContentPlan | null>(null);
+  const [meId, setMeId] = useState<string | null>(null);
+  const [meRole, setMeRole] = useState<string>("");
 
   const [fStatus, setFStatus] = useState("");
   const [fChannel, setFChannel] = useState("");
   const [fAssignee, setFAssignee] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const [delMsg, setDelMsg] = useState("");
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectText, setRejectText] = useState("");
+  const [approvalMsg, setApprovalMsg] = useState("");
 
   useEffect(() => {
     const supabase = createClient();
@@ -37,6 +69,18 @@ export function PlansView() {
       .from("profiles")
       .select("*")
       .then(({ data }) => setProfiles((data ?? []) as Profile[]));
+    supabase.auth.getUser().then(({ data }) => {
+      const uid = data.user?.id ?? null;
+      setMeId(uid);
+      if (uid) {
+        supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", uid)
+          .single()
+          .then(({ data: p }) => setMeRole(p?.role ?? ""));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -60,16 +104,18 @@ export function PlansView() {
       });
     supabase
       .from("contents")
-      .select("id, plan_id")
+      .select("id, plan_id, approval_status, title, body, channel, created_at")
       .eq("client_id", selectedClientId)
       .not("plan_id", "is", null)
+      .order("created_at", { ascending: false })
       .then(({ data }) => {
-        const map: Record<string, string> = {};
-        for (const c of (data ?? []) as { id: string; plan_id: string }[]) {
-          // 한 플랜에 여러 콘텐츠면 최신 것 하나(마지막)로
-          map[c.plan_id] = c.id;
+        const map: Record<string, LinkedContent[]> = {};
+        for (const c of (data ?? []) as (LinkedContent & {
+          plan_id: string;
+        })[]) {
+          (map[c.plan_id] ??= []).push(c);
         }
-        setContentByPlan(map);
+        setContentsByPlan(map);
       });
   }, [selectedClientId]);
 
@@ -98,14 +144,47 @@ export function PlansView() {
           allDay: true,
           backgroundColor: getChannel(p.channel)?.color ?? "#057A4E",
           borderColor: getChannel(p.channel)?.color ?? "#057A4E",
+          extendedProps: {
+            approval: contentsByPlan[p.id]?.[0]?.approval_status ?? null,
+          },
         })),
-    [plans],
+    [plans, contentsByPlan],
   );
 
   function choose(p: ContentPlan | null) {
     setSelected(p);
     setConfirmDel(false);
     setDelMsg("");
+    setRejectOpen(false);
+    setRejectText("");
+    setApprovalMsg("");
+  }
+
+  async function decideContent(
+    contentId: string,
+    decision: "approved" | "rejected",
+    comment?: string,
+  ) {
+    const r = await approveContent(contentId, decision, comment);
+    if (!r.ok) {
+      setApprovalMsg(`실패: ${r.error}`);
+      setTimeout(() => setApprovalMsg(""), 2500);
+      return;
+    }
+    // 로컬 뱃지 즉시 반영
+    setContentsByPlan((prev) => {
+      const next: Record<string, LinkedContent[]> = {};
+      for (const [pid, list] of Object.entries(prev)) {
+        next[pid] = list.map((c) =>
+          c.id === contentId ? { ...c, approval_status: decision } : c,
+        );
+      }
+      return next;
+    });
+    setApprovalMsg(decision === "approved" ? "승인됨" : "반려됨");
+    setRejectOpen(false);
+    setRejectText("");
+    setTimeout(() => setApprovalMsg(""), 2500);
   }
 
   async function handleDeletePlan() {
@@ -177,6 +256,25 @@ export function PlansView() {
                 editable
                 events={events}
                 eventDrop={onEventDrop}
+                eventContent={(arg) => {
+                  const ap = arg.event.extendedProps.approval as
+                    | ApprovalStatus
+                    | null;
+                  const dot =
+                    ap === "approved"
+                      ? "●"
+                      : ap === "rejected"
+                        ? "✕"
+                        : ap === "pending"
+                          ? "○"
+                          : "";
+                  return (
+                    <div className="truncate px-1 text-xs text-white">
+                      {dot && <span className="mr-1">{dot}</span>}
+                      {arg.event.title}
+                    </div>
+                  );
+                }}
                 eventClick={(info) => {
                   const p = plans.find((x) => x.id === info.event.id);
                   if (p) choose(p);
@@ -228,6 +326,7 @@ export function PlansView() {
                       <th className="px-3 py-2">상태</th>
                       <th className="px-3 py-2">담당</th>
                       <th className="px-3 py-2">예정일</th>
+                      <th className="px-3 py-2">승인</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -252,11 +351,20 @@ export function PlansView() {
                         <td className="px-3 py-2 font-mono text-muted">
                           {p.scheduled_date ?? "-"}
                         </td>
+                        <td className="px-3 py-2">
+                          {contentsByPlan[p.id]?.[0] ? (
+                            <ApprovalBadge
+                              status={contentsByPlan[p.id][0].approval_status}
+                            />
+                          ) : (
+                            <span className="text-xs text-muted">-</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                     {filtered.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-3 py-6 text-center text-muted">
+                        <td colSpan={6} className="px-3 py-6 text-center text-muted">
                           플랜이 없습니다.
                         </td>
                       </tr>
@@ -307,12 +415,13 @@ export function PlansView() {
                   (linkedKeyword
                     ? `&keyword=${encodeURIComponent(linkedKeyword)}`
                     : "");
-                const linkedId = contentByPlan[selected.id];
-                if (linkedId) {
+                const list = contentsByPlan[selected.id] ?? [];
+                const latest = list[0];
+                if (latest) {
                   return (
                     <div className="space-y-2">
                       <Link
-                        href={`/library?contentId=${linkedId}`}
+                        href={`/library?contentId=${latest.id}`}
                         className="block rounded-md bg-accent px-3 py-2 text-center text-sm font-semibold text-ink hover:opacity-90"
                       >
                         생성물 보기
@@ -331,9 +440,84 @@ export function PlansView() {
                 );
               })()}
 
+              {/* 연결된 생성물 — 승인/코멘트 [Fix 2] */}
+              {(() => {
+                const list = contentsByPlan[selected.id] ?? [];
+                const latest = list[0];
+                if (!latest) return null;
+                const approved = latest.approval_status === "approved";
+                return (
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-ink">
+                        연결된 생성물
+                      </h3>
+                      <ApprovalBadge status={latest.approval_status} />
+                    </div>
+                    <p className="text-sm font-medium text-ink">
+                      {latest.title || "(제목 없음)"}
+                    </p>
+                    <p className="line-clamp-4 rounded-md bg-subtle p-2 text-xs text-muted">
+                      {previewText(latest.body)}…
+                    </p>
+
+                    {meRole === "owner" && !approved && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => decideContent(latest.id, "approved")}
+                          className="flex-1 rounded-md bg-accent-deep px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
+                        >
+                          승인
+                        </button>
+                        <button
+                          onClick={() => setRejectOpen(true)}
+                          className="flex-1 rounded-md border border-red-400 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                        >
+                          반려
+                        </button>
+                      </div>
+                    )}
+                    {meRole === "owner" && approved && (
+                      <button
+                        onClick={() => setRejectOpen(true)}
+                        className="w-full rounded-md border border-border px-3 py-1.5 text-xs text-muted hover:bg-subtle"
+                      >
+                        승인 취소(반려)
+                      </button>
+                    )}
+                    {approvalMsg && (
+                      <p className="text-xs text-muted">{approvalMsg}</p>
+                    )}
+
+                    {list.length > 1 && (
+                      <details className="text-xs text-muted">
+                        <summary className="cursor-pointer">
+                          이전 생성물 {list.length - 1}건
+                        </summary>
+                        <ul className="mt-1 space-y-1">
+                          {list.slice(1).map((c) => (
+                            <li key={c.id}>
+                              <Link
+                                href={`/library?contentId=${c.id}`}
+                                className="hover:text-accent-deep hover:underline"
+                              >
+                                {c.title || "(제목 없음)"} ·{" "}
+                                {c.created_at.slice(0, 10)}
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+
+                    <CommentThread contentId={latest.id} meId={meId} />
+                  </div>
+                );
+              })()}
+
               {/* 플랜 삭제 */}
               <div className="space-y-1 border-t border-border pt-3">
-                {contentByPlan[selected.id] && !confirmDel && (
+                {contentsByPlan[selected.id]?.[0] && !confirmDel && (
                   <p className="text-xs text-muted">
                     연결된 생성물이 있습니다. 플랜만 삭제되고 생성물은
                     라이브러리에 남습니다.
@@ -370,6 +554,42 @@ export function PlansView() {
           )}
         </div>
       </div>
+
+      {/* 반려 사유 모달 [Fix 2] */}
+      {rejectOpen && selected && contentsByPlan[selected.id]?.[0] && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm space-y-3 rounded-xl border border-border bg-surface p-5 shadow-lg">
+            <h3 className="text-base font-bold text-ink">반려 사유</h3>
+            <textarea
+              value={rejectText}
+              onChange={(e) => setRejectText(e.target.value)}
+              rows={4}
+              placeholder="수정이 필요한 부분을 코멘트로 남겨주세요."
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setRejectOpen(false)}
+                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
+              >
+                취소
+              </button>
+              <button
+                onClick={() =>
+                  decideContent(
+                    contentsByPlan[selected.id][0].id,
+                    "rejected",
+                    rejectText,
+                  )
+                }
+                className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:opacity-90"
+              >
+                반려 확정
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
