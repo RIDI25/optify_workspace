@@ -325,6 +325,9 @@ export function ContentResultView(props: ContentResultData) {
           </div>
         )}
 
+        {/* 플랜 연결·날짜 지정은 승인과 무관한 기획 행위 — owner/member·승인상태 무관하게 상단 노출 [Fix 1] */}
+        {props.contentId && footer}
+
         {isWp && (
           <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
             <h3 className="text-sm font-semibold text-ink">SEO 정보</h3>
@@ -430,8 +433,6 @@ export function ContentResultView(props: ContentResultData) {
         {props.contentId && (
           <CommentThread contentId={props.contentId} meId={meId} />
         )}
-
-        {props.contentId && footer}
 
         {props.canDelete && props.contentId && (
           <div className="space-y-1 border-t border-border pt-3">
