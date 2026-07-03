@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { CHANNELS, getChannel, channelLabel } from "@/lib/channels";
 import { PLAN_STATUSES, planStatusLabel } from "@/lib/plan-status";
+import { deletePlan } from "@/lib/actions/contents";
 import type { ContentPlan, Profile } from "@/types/database";
 
 type View = "calendar" | "list";
@@ -27,6 +28,8 @@ export function PlansView() {
   const [fStatus, setFStatus] = useState("");
   const [fChannel, setFChannel] = useState("");
   const [fAssignee, setFAssignee] = useState("");
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [delMsg, setDelMsg] = useState("");
 
   useEffect(() => {
     const supabase = createClient();
@@ -99,6 +102,28 @@ export function PlansView() {
     [plans],
   );
 
+  function choose(p: ContentPlan | null) {
+    setSelected(p);
+    setConfirmDel(false);
+    setDelMsg("");
+  }
+
+  async function handleDeletePlan() {
+    if (!selected) return;
+    if (!confirmDel) {
+      setConfirmDel(true);
+      return;
+    }
+    const r = await deletePlan(selected.id);
+    if (r.ok) {
+      setPlans((prev) => prev.filter((p) => p.id !== selected.id));
+      choose(null);
+    } else {
+      setDelMsg(`삭제 실패: ${r.error}`);
+      setConfirmDel(false);
+    }
+  }
+
   async function onEventDrop(arg: EventDropArg) {
     const id = arg.event.id;
     const newDate = arg.event.startStr.slice(0, 10);
@@ -154,7 +179,7 @@ export function PlansView() {
                 eventDrop={onEventDrop}
                 eventClick={(info) => {
                   const p = plans.find((x) => x.id === info.event.id);
-                  if (p) setSelected(p);
+                  if (p) choose(p);
                 }}
                 headerToolbar={{
                   left: "prev,next today",
@@ -209,7 +234,7 @@ export function PlansView() {
                     {filtered.map((p) => (
                       <tr
                         key={p.id}
-                        onClick={() => setSelected(p)}
+                        onClick={() => choose(p)}
                         className="cursor-pointer border-t border-border hover:bg-subtle"
                       >
                         <td className="px-3 py-2 font-medium text-ink">
@@ -250,7 +275,7 @@ export function PlansView() {
               <div className="flex items-start justify-between">
                 <h2 className="text-base font-bold text-ink">{selected.title}</h2>
                 <button
-                  onClick={() => setSelected(null)}
+                  onClick={() => choose(null)}
                   className="text-xs text-muted hover:text-ink"
                 >
                   닫기
@@ -305,6 +330,38 @@ export function PlansView() {
                   </Link>
                 );
               })()}
+
+              {/* 플랜 삭제 */}
+              <div className="space-y-1 border-t border-border pt-3">
+                {contentByPlan[selected.id] && !confirmDel && (
+                  <p className="text-xs text-muted">
+                    연결된 생성물이 있습니다. 플랜만 삭제되고 생성물은
+                    라이브러리에 남습니다.
+                  </p>
+                )}
+                <button
+                  onClick={handleDeletePlan}
+                  className={[
+                    "w-full rounded-md border px-3 py-2 text-sm font-medium",
+                    confirmDel
+                      ? "border-red-500 bg-red-50 text-red-600"
+                      : "border-border text-muted hover:bg-subtle",
+                  ].join(" ")}
+                >
+                  {confirmDel
+                    ? "정말 삭제할까요? (다시 클릭)"
+                    : "플랜 삭제"}
+                </button>
+                {confirmDel && (
+                  <button
+                    onClick={() => setConfirmDel(false)}
+                    className="w-full px-3 py-1 text-xs text-muted hover:text-ink"
+                  >
+                    취소
+                  </button>
+                )}
+                {delMsg && <p className="text-xs text-red-600">{delMsg}</p>}
+              </div>
             </div>
           ) : (
             <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted">

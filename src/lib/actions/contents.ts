@@ -71,6 +71,21 @@ export async function setPublishedStatus(
     : { ok: true, publishedAt };
 }
 
+/**
+ * 콘텐츠 플랜 삭제. 연결된 콘텐츠의 plan_id는 FK ON DELETE SET NULL로 자동 해제 —
+ * 생성물은 라이브러리에 그대로 남는다. RLS상 팀 멤버 삭제 가능(현행 유지).
+ */
+export async function deletePlan(
+  planId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("content_plans")
+    .delete()
+    .eq("id", planId);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 interface SendToPlanInput {
   clientId: string;
   channel: string;
