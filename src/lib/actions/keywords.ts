@@ -7,6 +7,7 @@ interface AddInput {
   clientId: string;
   channel: string;
   ideas: KeywordIdea[];
+  source?: string; // 'google_ads' | 'naver_ads' | 'gsc' …
 }
 
 /**
@@ -35,7 +36,7 @@ export async function addKeywordsToPlan(
         competition: i.competition,
         cpc_low: i.cpcLow,
         cpc_high: i.cpcHigh,
-        source: "google_ads",
+        source: input.source ?? "google_ads",
         status: "planned",
       })),
     )

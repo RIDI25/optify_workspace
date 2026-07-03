@@ -6,16 +6,20 @@ import { useClientContext } from "@/components/providers/client-context";
 import { getChannel } from "@/lib/channels";
 import { addKeywordsToPlan, addTopicToPlan } from "@/lib/actions/keywords";
 import type { KeywordIdea } from "@/lib/google-ads";
+import type { NaverKeywordIdea } from "@/lib/naver-ads";
 import type { ChannelSettings, Keyword } from "@/types/database";
 
 type Tab = "research" | "pool";
+type Source = "google" | "naver";
 
 export function KeywordsView() {
   const { selectedClientId, selectedClient } = useClientContext();
   const [tab, setTab] = useState<Tab>("research");
 
+  const [source, setSource] = useState<Source>("google");
   const [seeds, setSeeds] = useState("");
   const [ideas, setIdeas] = useState<KeywordIdea[]>([]);
+  const [naverRows, setNaverRows] = useState<NaverKeywordIdea[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
@@ -82,23 +86,41 @@ export function KeywordsView() {
     setError("");
     setSearched(false);
     setSelected(new Set());
+    setIdeas([]);
+    setNaverRows([]);
     try {
-      const res = await fetch("/api/keywords/ideas", {
+      const endpoint =
+        source === "naver" ? "/api/keywords/naver-ideas" : "/api/keywords/ideas";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ seeds: list, clientId: selectedClientId }),
       });
       const data = await res.json();
-      if (data.ok) {
+      if (!data.ok) {
+        setError(data.error || "조회에 실패했습니다.");
+        return;
+      }
+      if (source === "naver") {
+        const rows = data.ideas as NaverKeywordIdea[];
+        setNaverRows(rows);
+        // 플랜에 추가·선택 재사용을 위해 generic 형태도 보관
+        setIdeas(
+          rows.map((r) => ({
+            keyword: r.keyword,
+            avgMonthlySearches: r.monthlyTotal,
+            competition: r.competition,
+            cpcLow: null,
+            cpcHigh: null,
+          })),
+        );
+        setMsg(`${rows.length}개 조회됨`);
+      } else {
         setIdeas(data.ideas as KeywordIdea[]);
         setMsg(`${data.ideas.length}개 조회됨`);
-        setSearched(true);
-      } else {
-        setIdeas([]);
-        setError(data.error || "조회에 실패했습니다.");
       }
+      setSearched(true);
     } catch (e) {
-      setIdeas([]);
       setError(e instanceof Error ? e.message : "조회 실패");
     } finally {
       setBusy(false);
@@ -124,6 +146,7 @@ export function KeywordsView() {
         clientId: selectedClientId,
         channel,
         ideas: chosen,
+        source: source === "naver" ? "naver_ads" : "google_ads",
       });
       setMsg(
         result.ok
@@ -193,7 +216,7 @@ export function KeywordsView() {
       <div>
         <h1 className="text-xl font-bold text-ink">키워드 리서치</h1>
         <p className="mt-1 text-sm text-muted">
-          {selectedClient?.name} · Google Ads Keyword Planner
+          {selectedClient?.name} · Google Ads · 네이버 검색광고
         </p>
       </div>
 
@@ -216,6 +239,37 @@ export function KeywordsView() {
 
       {tab === "research" && (
         <div className="space-y-4">
+          {/* 소스 선택 [A-1] */}
+          <div className="flex gap-2">
+            {(["google", "naver"] as Source[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => {
+                  setSource(s);
+                  setIdeas([]);
+                  setNaverRows([]);
+                  setSelected(new Set());
+                  setSearched(false);
+                  setMsg("");
+                  setError("");
+                }}
+                className={[
+                  "rounded-md border px-3 py-1.5 text-sm font-medium",
+                  source === s
+                    ? "border-accent-deep bg-tint text-accent-deep"
+                    : "border-border text-ink hover:bg-subtle",
+                ].join(" ")}
+              >
+                {s === "google" ? "Google Ads" : "네이버 검색광고"}
+              </button>
+            ))}
+            {source === "naver" && (
+              <span className="self-center text-xs text-muted">
+                시드 최대 5개
+              </span>
+            )}
+          </div>
+
           <div className="space-y-2">
             <textarea
               value={seeds}
@@ -276,12 +330,24 @@ export function KeywordsView() {
                 </button>
               </div>
 
-              <KeywordTable
-                rows={shown}
-                selectable
-                selected={selected}
-                onToggle={toggle}
-              />
+              {source === "naver" ? (
+                <NaverTable
+                  rows={
+                    filter.trim()
+                      ? naverRows.filter((r) => r.keyword.includes(filter.trim()))
+                      : naverRows
+                  }
+                  selected={selected}
+                  onToggle={toggle}
+                />
+              ) : (
+                <KeywordTable
+                  rows={shown}
+                  selectable
+                  selected={selected}
+                  onToggle={toggle}
+                />
+              )}
             </>
           )}
         </div>
@@ -378,6 +444,62 @@ export function KeywordsView() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function NaverTable({
+  rows,
+  selected,
+  onToggle,
+}: {
+  rows: NaverKeywordIdea[];
+  selected: Set<string>;
+  onToggle: (kw: string) => void;
+}) {
+  const sorted = [...rows].sort((a, b) => b.monthlyTotal - a.monthlyTotal);
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full text-sm">
+        <thead className="bg-subtle text-left text-xs text-muted">
+          <tr>
+            <th className="w-10 px-3 py-2"></th>
+            <th className="px-3 py-2">연관 키워드</th>
+            <th className="px-3 py-2 text-right">월간 PC</th>
+            <th className="px-3 py-2 text-right">월간 모바일</th>
+            <th className="px-3 py-2 text-right">PC CTR</th>
+            <th className="px-3 py-2 text-right">모바일 CTR</th>
+            <th className="px-3 py-2">경쟁정도</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((r) => (
+            <tr key={r.keyword} className="border-t border-border">
+              <td className="px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={selected.has(r.keyword)}
+                  onChange={() => onToggle(r.keyword)}
+                />
+              </td>
+              <td className="px-3 py-2 font-medium text-ink">{r.keyword}</td>
+              <td className="px-3 py-2 text-right font-mono">
+                {r.monthlyPc.toLocaleString()}
+              </td>
+              <td className="px-3 py-2 text-right font-mono">
+                {r.monthlyMobile.toLocaleString()}
+              </td>
+              <td className="px-3 py-2 text-right font-mono text-muted">
+                {r.pcCtr.toFixed(2)}%
+              </td>
+              <td className="px-3 py-2 text-right font-mono text-muted">
+                {r.mobileCtr.toFixed(2)}%
+              </td>
+              <td className="px-3 py-2 text-muted">{r.competition}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
