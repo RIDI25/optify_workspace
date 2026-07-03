@@ -11,6 +11,7 @@ export type ClientStatus = "active" | "paused" | "ended";
 export type KeywordStatus = "candidate" | "planned" | "discarded";
 export type PlanStatus = "idea" | "writing" | "review" | "published";
 export type ReportStatus = "draft" | "final";
+export type ApprovalStatus = "pending" | "approved" | "rejected";
 
 /** 현재 사용되는 채널 값(참고용). 하드코딩 강제 아님 — string 어디에도 대입 가능. */
 export const KNOWN_CHANNELS = ["naver_blog", "wordpress", "threads"] as const;
@@ -98,7 +99,18 @@ export interface Content extends Timestamps {
   output_tokens: number | null;
   wp_post_id: number | null;
   published_at: string | null;
+  approval_status: ApprovalStatus;
+  approved_by: string | null;
+  approved_at: string | null;
   created_by: string | null;
+}
+
+export interface ContentComment {
+  id: string;
+  content_id: string;
+  author: string | null;
+  body: string;
+  created_at: string;
 }
 
 export interface Report extends Timestamps {

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAnthropic, GENERATION_MODEL } from "@/lib/anthropic";
 import { buildSystemPrompt, buildUserPrompt } from "@/lib/generation/engine";
 import { logApiUsage } from "@/lib/usage";
+import { approvalFieldsForCreator } from "@/lib/approval";
 import {
   META_DELIMITER,
   type StreamMeta,
@@ -99,7 +100,8 @@ export async function POST(req: NextRequest) {
         meta.inputTokens = final.usage.input_tokens;
         meta.outputTokens = final.usage.output_tokens;
 
-        // 생성 결과 저장
+        // 생성 결과 저장 (승인 상태: owner→approved, member→pending)
+        const approval = await approvalFieldsForCreator(supabase, user.id);
         const { data: inserted } = await supabase
           .from("contents")
           .insert({
@@ -113,6 +115,7 @@ export async function POST(req: NextRequest) {
             input_tokens: meta.inputTokens,
             output_tokens: meta.outputTokens,
             created_by: user.id,
+            ...approval,
           })
           .select("id")
           .single();

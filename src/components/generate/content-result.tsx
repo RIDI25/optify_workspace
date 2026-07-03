@@ -1,10 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { markdownToBasicHtml, stripMarkdown } from "@/lib/text";
+import { createClient } from "@/lib/supabase/client";
 import { SendToPlanFooter } from "@/components/generate/send-to-plan";
-import { setPublishedStatus, deleteContent } from "@/lib/actions/contents";
-import type { ContentImage, ContentMeta } from "@/types/database";
+import {
+  setPublishedStatus,
+  deleteContent,
+  approveContent,
+  addComment,
+  deleteComment,
+} from "@/lib/actions/contents";
+import type {
+  ApprovalStatus,
+  ContentComment,
+  ContentImage,
+  ContentMeta,
+  Profile,
+} from "@/types/database";
 
 export interface ContentResultData {
   channel: string;
@@ -110,6 +123,54 @@ export function ContentResultView(props: ContentResultData) {
   const [markMsg, setMarkMsg] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteMsg, setDeleteMsg] = useState("");
+
+  // 승인 상태 + 현재 사용자 [Feature 3]
+  const [meId, setMeId] = useState<string | null>(null);
+  const [meRole, setMeRole] = useState<string>("");
+  const [approval, setApproval] = useState<ApprovalStatus>("approved");
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectText, setRejectText] = useState("");
+  const [approvalMsg, setApprovalMsg] = useState("");
+
+  useEffect(() => {
+    if (!props.contentId) return;
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      const uid = data.user?.id ?? null;
+      setMeId(uid);
+      if (uid) {
+        supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", uid)
+          .single()
+          .then(({ data: p }) => setMeRole(p?.role ?? ""));
+      }
+    });
+    supabase
+      .from("contents")
+      .select("approval_status")
+      .eq("id", props.contentId)
+      .single()
+      .then(({ data }) => setApproval(data?.approval_status ?? "approved"));
+  }, [props.contentId]);
+
+  const isOwner = meRole === "owner";
+  const isApproved = approval === "approved";
+
+  async function decide(decision: "approved" | "rejected", comment?: string) {
+    if (!props.contentId) return;
+    const r = await approveContent(props.contentId, decision, comment);
+    if (r.ok) {
+      setApproval(decision);
+      setApprovalMsg(decision === "approved" ? "승인됨" : "반려됨");
+      setRejectOpen(false);
+      setRejectText("");
+    } else {
+      setApprovalMsg(`실패: ${r.error}`);
+    }
+    setTimeout(() => setApprovalMsg(""), 2500);
+  }
 
   const displayHtml = isWp
     ? body
@@ -219,6 +280,51 @@ export function ContentResultView(props: ContentResultData) {
 
       {/* 우: 채널별 패널 */}
       <div className="space-y-4">
+        {/* 승인 상태 [Feature 3] */}
+        {props.contentId && (
+          <div className="space-y-2 rounded-lg border border-border bg-surface p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-ink">승인 상태</h3>
+              <ApprovalBadge status={approval} />
+            </div>
+            {approval === "pending" && (
+              <p className="text-xs text-muted">
+                승인 대기중 — 관리자 승인 후 발행할 수 있습니다.
+              </p>
+            )}
+            {approval === "rejected" && (
+              <p className="text-xs text-red-600">
+                반려됨 — 아래 코멘트를 확인하고 수정 후 다시 요청하세요.
+              </p>
+            )}
+            {isOwner && approval !== "approved" && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => decide("approved")}
+                  className="flex-1 rounded-md bg-accent-deep px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
+                >
+                  승인
+                </button>
+                <button
+                  onClick={() => setRejectOpen(true)}
+                  className="flex-1 rounded-md border border-red-400 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                >
+                  반려
+                </button>
+              </div>
+            )}
+            {isOwner && approval === "approved" && (
+              <button
+                onClick={() => setRejectOpen(true)}
+                className="w-full rounded-md border border-border px-3 py-1.5 text-xs text-muted hover:bg-subtle"
+              >
+                승인 취소(반려)
+              </button>
+            )}
+            {approvalMsg && <p className="text-xs text-muted">{approvalMsg}</p>}
+          </div>
+        )}
+
         {isWp && (
           <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
             <h3 className="text-sm font-semibold text-ink">SEO 정보</h3>
@@ -256,16 +362,19 @@ export function ContentResultView(props: ContentResultData) {
           </div>
         )}
 
-        {/* WP 발행 */}
+        {/* WP 발행 — 승인 게이트 */}
         {isWp && props.canPublish && (
           <div className="space-y-2">
             <button
               onClick={publish}
-              disabled={publishing}
+              disabled={publishing || !isApproved}
               className="w-full rounded-md bg-accent-deep px-3 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
             >
               {publishing ? "발행 중…" : "WP 초안으로 발행"}
             </button>
+            {!isApproved && (
+              <p className="text-xs text-muted">승인 후 발행할 수 있습니다.</p>
+            )}
             {wpMsg && <p className="text-xs text-muted">{wpMsg}</p>}
             {thumb && <p className="text-xs text-muted">{thumb}</p>}
           </div>
@@ -295,13 +404,14 @@ export function ContentResultView(props: ContentResultData) {
             </div>
           )}
 
-        {/* 발행 완료 수동 표시 — 대시보드·리포트 발행 집계에 반영 [AUDIT M-1] */}
+        {/* 발행 완료 수동 표시 — 승인 게이트 [AUDIT M-1 / Feature 3] */}
         {props.contentId && (
           <div className="space-y-1">
             <button
               onClick={togglePublished}
+              disabled={!isApproved}
               className={[
-                "w-full rounded-md border px-3 py-2 text-sm font-medium",
+                "w-full rounded-md border px-3 py-2 text-sm font-medium disabled:opacity-50",
                 markedPublished
                   ? "border-accent-deep bg-tint text-accent-deep"
                   : "border-border text-ink hover:bg-subtle",
@@ -309,8 +419,16 @@ export function ContentResultView(props: ContentResultData) {
             >
               {markedPublished ? "✓ 발행 완료 (클릭 시 해제)" : "발행 완료로 표시"}
             </button>
+            {!isApproved && (
+              <p className="text-xs text-muted">승인 후 표시할 수 있습니다.</p>
+            )}
             {markMsg && <p className="text-xs text-muted">{markMsg}</p>}
           </div>
+        )}
+
+        {/* 코멘트 스레드 [Feature 3] */}
+        {props.contentId && (
+          <CommentThread contentId={props.contentId} meId={meId} />
         )}
 
         {props.contentId && footer}
@@ -341,6 +459,165 @@ export function ContentResultView(props: ContentResultData) {
             {deleteMsg && <p className="text-xs text-red-600">{deleteMsg}</p>}
           </div>
         )}
+      </div>
+
+      {/* 반려 사유 입력 모달 */}
+      {rejectOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-sm space-y-3 rounded-xl border border-border bg-surface p-5 shadow-lg">
+            <h3 className="text-base font-bold text-ink">반려 사유</h3>
+            <textarea
+              value={rejectText}
+              onChange={(e) => setRejectText(e.target.value)}
+              rows={4}
+              placeholder="수정이 필요한 부분을 코멘트로 남겨주세요."
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setRejectOpen(false)}
+                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => decide("rejected", rejectText)}
+                className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:opacity-90"
+              >
+                반려 확정
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ApprovalBadge({ status }: { status: ApprovalStatus }) {
+  const map: Record<ApprovalStatus, { label: string; cls: string }> = {
+    pending: { label: "승인 대기", cls: "bg-subtle text-muted" },
+    approved: { label: "승인됨", cls: "bg-tint text-accent-deep" },
+    rejected: { label: "반려됨", cls: "bg-red-50 text-red-600" },
+  };
+  const m = map[status];
+  return (
+    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${m.cls}`}>
+      {m.label}
+    </span>
+  );
+}
+
+function CommentThread({
+  contentId,
+  meId,
+}: {
+  contentId: string;
+  meId: string | null;
+}) {
+  const [comments, setComments] = useState<ContentComment[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    const supabase = createClient();
+    const [{ data: cs }, { data: ps }] = await Promise.all([
+      supabase
+        .from("content_comments")
+        .select("*")
+        .eq("content_id", contentId)
+        .order("created_at"),
+      supabase.from("profiles").select("*"),
+    ]);
+    setComments((cs ?? []) as ContentComment[]);
+    setProfiles((ps ?? []) as Profile[]);
+  }
+
+  useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+    Promise.all([
+      supabase
+        .from("content_comments")
+        .select("*")
+        .eq("content_id", contentId)
+        .order("created_at"),
+      supabase.from("profiles").select("*"),
+    ]).then(([{ data: cs }, { data: ps }]) => {
+      if (!active) return;
+      setComments((cs ?? []) as ContentComment[]);
+      setProfiles((ps ?? []) as Profile[]);
+    });
+    return () => {
+      active = false;
+    };
+  }, [contentId]);
+
+  const name = (id: string | null) =>
+    profiles.find((p) => p.id === id)?.name ?? "?";
+
+  async function submit() {
+    if (!body.trim()) return;
+    setBusy(true);
+    const r = await addComment(contentId, body);
+    setBusy(false);
+    if (r.ok) {
+      setBody("");
+      void load();
+    }
+  }
+
+  async function remove(id: string) {
+    const r = await deleteComment(id);
+    if (r.ok) setComments((prev) => prev.filter((c) => c.id !== id));
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
+      <h3 className="text-sm font-semibold text-ink">코멘트</h3>
+      {comments.length === 0 ? (
+        <p className="text-xs text-muted">아직 코멘트가 없습니다.</p>
+      ) : (
+        <ul className="space-y-2">
+          {comments.map((c) => (
+            <li key={c.id} className="rounded-md bg-subtle p-2 text-sm">
+              <div className="mb-0.5 flex items-center justify-between">
+                <span className="text-xs font-medium text-ink">
+                  {name(c.author)}
+                </span>
+                <span className="flex items-center gap-2 text-[11px] text-muted">
+                  {c.created_at.slice(0, 16).replace("T", " ")}
+                  {c.author === meId && (
+                    <button
+                      onClick={() => remove(c.id)}
+                      className="hover:text-red-600"
+                    >
+                      삭제
+                    </button>
+                  )}
+                </span>
+              </div>
+              <p className="whitespace-pre-wrap text-ink">{c.body}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <input
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          placeholder="코멘트 입력…"
+          className="flex-1 rounded-md border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent-deep"
+        />
+        <button
+          onClick={submit}
+          disabled={busy || !body.trim()}
+          className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50"
+        >
+          등록
+        </button>
       </div>
     </div>
   );

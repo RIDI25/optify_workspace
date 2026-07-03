@@ -23,6 +23,17 @@ export default async function DashboardPage() {
   weekEnd.setDate(weekStart.getDate() + 6);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
+  // 승인 위젯: owner=대기 전체, member=본인 반려 [Feature 3]
+  const pendingCountRes = supabase
+    .from("contents")
+    .select("id", { count: "exact", head: true })
+    .eq("approval_status", "pending");
+  const myRejectedRes = supabase
+    .from("contents")
+    .select("id", { count: "exact", head: true })
+    .eq("approval_status", "rejected")
+    .eq("created_by", profile.id);
+
   const [clientsRes, weekPlansRes, myPlansRes, contentsRes, usageRes] =
     await Promise.all([
       supabase.from("clients").select("*"),
@@ -79,6 +90,10 @@ export default async function DashboardPage() {
     0,
   );
 
+  const pendingCount = profile.role === "owner" ? (await pendingCountRes).count ?? 0 : 0;
+  const myRejectedCount =
+    profile.role === "member" ? (await myRejectedRes).count ?? 0 : 0;
+
   const monthLabel = `${now.getFullYear()}년 ${now.getMonth() + 1}월`;
 
   return (
@@ -89,6 +104,34 @@ export default async function DashboardPage() {
           {profile.name}님 · {monthLabel}
         </p>
       </div>
+
+      {/* 승인 위젯 [Feature 3] */}
+      {profile.role === "owner" && pendingCount > 0 && (
+        <Link
+          href="/library?approval=pending"
+          className="block rounded-lg border border-accent-deep/30 bg-tint/40 p-4 hover:bg-tint"
+        >
+          <p className="text-sm font-semibold text-accent-deep">
+            승인 대기 콘텐츠 {pendingCount}건
+          </p>
+          <p className="mt-0.5 text-xs text-muted">
+            클릭하면 라이브러리에서 대기 목록을 확인합니다.
+          </p>
+        </Link>
+      )}
+      {profile.role === "member" && myRejectedCount > 0 && (
+        <Link
+          href="/library?approval=rejected"
+          className="block rounded-lg border border-red-200 bg-red-50 p-4 hover:bg-red-100"
+        >
+          <p className="text-sm font-semibold text-red-600">
+            반려된 콘텐츠 {myRejectedCount}건
+          </p>
+          <p className="mt-0.5 text-xs text-muted">
+            코멘트를 확인하고 수정 후 다시 요청하세요.
+          </p>
+        </Link>
+      )}
 
       {/* member: 내 담당을 최상단으로 */}
       {profile.role === "member" && (

@@ -4,6 +4,7 @@ import { createAnthropic, GENERATION_MODEL } from "@/lib/anthropic";
 import { buildWordpressJsonPrompt } from "@/lib/generation/engine";
 import { robustJsonParse } from "@/lib/generation/json";
 import { logApiUsage } from "@/lib/usage";
+import { approvalFieldsForCreator } from "@/lib/approval";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -134,7 +135,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 초기 저장 (이미지 삽입 전 content_html)
+    // 초기 저장 (이미지 삽입 전 content_html) — 승인 상태 포함
+    const approval = await approvalFieldsForCreator(supabase, user.id);
     const { data: inserted } = await supabase
       .from("contents")
       .insert({
@@ -147,6 +149,7 @@ export async function POST(req: NextRequest) {
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         created_by: user.id,
+        ...approval,
       })
       .select("id")
       .single();

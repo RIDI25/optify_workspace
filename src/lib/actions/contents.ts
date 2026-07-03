@@ -86,6 +86,75 @@ export async function deletePlan(
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/** 콘텐츠 승인/반려 (owner 전용, DB 트리거로도 강제). 반려 시 사유는 코멘트로 저장. */
+export async function approveContent(
+  contentId: string,
+  decision: "approved" | "rejected",
+  comment?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "인증 필요" };
+  const { data: prof } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (prof?.role !== "owner") {
+    return { ok: false, error: "승인/반려는 관리자만 가능합니다." };
+  }
+  const { error } = await supabase
+    .from("contents")
+    .update({
+      approval_status: decision,
+      approved_by: user.id,
+      approved_at: new Date().toISOString(),
+    })
+    .eq("id", contentId);
+  if (error) return { ok: false, error: error.message };
+  if (decision === "rejected" && comment?.trim()) {
+    await supabase.from("content_comments").insert({
+      content_id: contentId,
+      author: user.id,
+      body: comment.trim(),
+    });
+  }
+  return { ok: true };
+}
+
+/** 코멘트 작성 (인증 사용자). */
+export async function addComment(
+  contentId: string,
+  body: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "인증 필요" };
+  if (!body.trim()) return { ok: false, error: "내용을 입력하세요." };
+  const { error } = await supabase.from("content_comments").insert({
+    content_id: contentId,
+    author: user.id,
+    body: body.trim(),
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/** 코멘트 삭제 (본인 것만 — RLS로 강제). */
+export async function deleteComment(
+  commentId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("content_comments")
+    .delete()
+    .eq("id", commentId);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 interface SendToPlanInput {
   clientId: string;
   channel: string;

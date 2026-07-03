@@ -29,6 +29,9 @@ export function LibraryView() {
   const [fAuthor, setFAuthor] = useState("");
   const [fFrom, setFFrom] = useState("");
   const [fTo, setFTo] = useState("");
+  const [fApproval, setFApproval] = useState(
+    () => searchParams.get("approval") ?? "",
+  );
 
   useEffect(() => {
     const supabase = createClient();
@@ -64,12 +67,13 @@ export function LibraryView() {
       contents.filter((c) => {
         if (fChannel && c.channel !== fChannel) return false;
         if (fAuthor && c.created_by !== fAuthor) return false;
+        if (fApproval && c.approval_status !== fApproval) return false;
         const day = c.created_at.slice(0, 10);
         if (fFrom && day < fFrom) return false;
         if (fTo && day > fTo) return false;
         return true;
       }),
-    [contents, fChannel, fAuthor, fFrom, fTo],
+    [contents, fChannel, fAuthor, fApproval, fFrom, fTo],
   );
 
   if (!selectedClientId) {
@@ -110,6 +114,16 @@ export function LibraryView() {
             </option>
           ))}
         </select>
+        <select
+          value={fApproval}
+          onChange={(e) => setFApproval(e.target.value)}
+          className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+        >
+          <option value="">승인 (전체)</option>
+          <option value="pending">승인 대기</option>
+          <option value="approved">승인됨</option>
+          <option value="rejected">반려됨</option>
+        </select>
         <input
           type="date"
           value={fFrom}
@@ -133,6 +147,7 @@ export function LibraryView() {
               <th className="px-3 py-2">채널</th>
               <th className="px-3 py-2">작성자</th>
               <th className="px-3 py-2">생성일</th>
+              <th className="px-3 py-2">승인</th>
               <th className="px-3 py-2">WP</th>
             </tr>
           </thead>
@@ -157,6 +172,24 @@ export function LibraryView() {
                   {c.created_at.slice(0, 10)}
                 </td>
                 <td className="px-3 py-2">
+                  <span
+                    className={[
+                      "rounded-full px-2 py-0.5 text-xs font-medium",
+                      c.approval_status === "approved"
+                        ? "bg-tint text-accent-deep"
+                        : c.approval_status === "rejected"
+                          ? "bg-red-50 text-red-600"
+                          : "bg-subtle text-muted",
+                    ].join(" ")}
+                  >
+                    {c.approval_status === "approved"
+                      ? "승인"
+                      : c.approval_status === "rejected"
+                        ? "반려"
+                        : "대기"}
+                  </span>
+                </td>
+                <td className="px-3 py-2">
                   {c.wp_post_id ? (
                     <span className="rounded bg-tint px-1.5 py-0.5 text-xs text-accent-deep">
                       발행 #{c.wp_post_id}
@@ -169,7 +202,7 @@ export function LibraryView() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-muted">
+                <td colSpan={6} className="px-3 py-6 text-center text-muted">
                   콘텐츠가 없습니다.
                 </td>
               </tr>
