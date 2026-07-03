@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { decryptSecret } from "@/lib/crypto";
 import { wpCreateDraft, wpUploadMedia } from "@/lib/wordpress";
 import { markdownToBasicHtml } from "@/lib/text";
+import { isSupabaseStorageUrl } from "@/lib/url-guard";
 
 export const runtime = "nodejs";
 
@@ -52,7 +53,10 @@ export async function POST(req: NextRequest) {
     let featuredMediaId: number | undefined;
     let thumbnailSet = false;
     let thumbnailError: string | undefined;
-    if (featuredImage?.url) {
+    if (featuredImage?.url && !isSupabaseStorageUrl(featuredImage.url)) {
+      // 자사 Storage 이미지만 허용 [AUDIT L-2]
+      thumbnailError = "허용되지 않은 이미지 호스트(자사 Storage만 가능)";
+    } else if (featuredImage?.url) {
       try {
         const imgRes = await fetch(featuredImage.url);
         if (!imgRes.ok) throw new Error(`이미지 다운로드 실패 (${imgRes.status})`);

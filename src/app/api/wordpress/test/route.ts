@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { decryptSecret } from "@/lib/crypto";
 import { wpTestConnection } from "@/lib/wordpress";
+import { isSafePublicUrl } from "@/lib/url-guard";
 
 export const runtime = "nodejs";
 
@@ -39,6 +40,12 @@ export async function POST(req: NextRequest) {
 
   if (!url || !username || !password) {
     return NextResponse.json({ ok: false, error: "url/username/password 필요" });
+  }
+
+  // SSRF 완화: http(s)만, 사설/내부 주소 차단 [AUDIT L-2]
+  const guard = isSafePublicUrl(url);
+  if (!guard.ok) {
+    return NextResponse.json({ ok: false, error: guard.error });
   }
 
   const result = await wpTestConnection(url, username, password);
