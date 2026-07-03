@@ -9,7 +9,20 @@ import {
   saveChannelAssignee,
   saveWpConnection,
 } from "@/lib/actions/settings";
+import {
+  ensureOnboardingTasks,
+  getOnboardingSignals,
+  toggleOnboardingTask,
+} from "@/lib/actions/onboarding";
+import { DEFAULT_ONBOARDING_TASKS, autoDoneKeys } from "@/lib/onboarding";
 import type { Client, ChannelSettings, Profile, Role } from "@/types/database";
+
+interface OnboardingTask {
+  id: string;
+  task_key: string;
+  label: string;
+  done: boolean;
+}
 
 type Tab = "clients" | "presets" | "wordpress" | "team" | "usage";
 
@@ -279,6 +292,87 @@ function ClientCard({
           {msg && <span className="text-xs text-muted">{msg}</span>}
         </div>
       )}
+
+      {!client.is_internal && (
+        <OnboardingChecklist clientId={client.id} readOnly={readOnly} />
+      )}
+    </div>
+  );
+}
+
+function OnboardingChecklist({
+  clientId,
+  readOnly,
+}: {
+  clientId: string;
+  readOnly: boolean;
+}) {
+  const [tasks, setTasks] = useState<OnboardingTask[]>([]);
+  const [autoDone, setAutoDone] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      if (!readOnly) await ensureOnboardingTasks(clientId);
+      const supabase = createClient();
+      const [{ data: rows }, signals] = await Promise.all([
+        supabase
+          .from("client_onboarding_tasks")
+          .select("id, task_key, label, done")
+          .eq("client_id", clientId),
+        getOnboardingSignals(clientId),
+      ]);
+      if (!active) return;
+      setTasks((rows ?? []) as OnboardingTask[]);
+      setAutoDone(autoDoneKeys(signals));
+    }
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [clientId, readOnly]);
+
+  async function toggle(t: OnboardingTask) {
+    const next = !t.done;
+    setTasks((prev) =>
+      prev.map((x) => (x.id === t.id ? { ...x, done: next } : x)),
+    );
+    await toggleOnboardingTask(t.id, next);
+  }
+
+  const ordered = DEFAULT_ONBOARDING_TASKS.map((d) =>
+    tasks.find((t) => t.task_key === d.key),
+  ).filter((t): t is OnboardingTask => !!t);
+  const remaining = ordered.filter(
+    (t) => !t.done && !autoDone.has(t.task_key),
+  ).length;
+
+  return (
+    <div className="space-y-2 border-t border-border pt-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-ink">온보딩 체크리스트</h4>
+        <span className="text-xs text-muted">미완료 {remaining}건</span>
+      </div>
+      <ul className="space-y-1.5">
+        {ordered.map((t) => {
+          const auto = autoDone.has(t.task_key);
+          const done = t.done || auto;
+          return (
+            <li key={t.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={done}
+                disabled={readOnly || auto}
+                onChange={() => toggle(t)}
+              />
+              <span className={done ? "text-muted line-through" : "text-ink"}>
+                {t.label}
+              </span>
+              {auto && <span className="text-xs text-accent-deep">(자동)</span>}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

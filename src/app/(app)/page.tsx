@@ -3,6 +3,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { channelLabel } from "@/lib/channels";
 import { planStatusLabel } from "@/lib/plan-status";
+import { autoDoneKeys } from "@/lib/onboarding";
 import type { Client, Content, ContentPlan, ApiUsageLog } from "@/types/database";
 
 function ymd(d: Date): string {
@@ -33,6 +34,14 @@ export default async function DashboardPage() {
     .select("id", { count: "exact", head: true })
     .eq("approval_status", "rejected")
     .eq("created_by", profile.id);
+
+  const onboardingRes = supabase
+    .from("client_onboarding_tasks")
+    .select("client_id, task_key, done");
+  const csRes = supabase
+    .from("channel_settings")
+    .select("client_id, channel, wp_app_password_encrypted");
+  const kwRes = supabase.from("keywords").select("client_id");
 
   const [clientsRes, weekPlansRes, myPlansRes, contentsRes, usageRes] =
     await Promise.all([
@@ -94,6 +103,45 @@ export default async function DashboardPage() {
   const myRejectedCount =
     profile.role === "member" ? (await myRejectedRes).count ?? 0 : 0;
 
+  // 온보딩 진행중 클라이언트 (is_internal 제외) [A-2]
+  const [onboarding, cs, kws] = await Promise.all([
+    onboardingRes,
+    csRes,
+    kwRes,
+  ]);
+  const tasksAll = (onboarding.data ?? []) as {
+    client_id: string;
+    task_key: string;
+    done: boolean;
+  }[];
+  const csAll = (cs.data ?? []) as {
+    client_id: string;
+    channel: string;
+    wp_app_password_encrypted: string | null;
+  }[];
+  const kwAll = (kws.data ?? []) as { client_id: string }[];
+  const onboardingClients = clients
+    .filter((c) => !c.is_internal)
+    .map((c) => {
+      const auto = autoDoneKeys({
+        hasGscGa4Ids: !!(c.gsc_site_url && c.ga4_property_id),
+        hasWpCreds: csAll.some(
+          (x) =>
+            x.client_id === c.id &&
+            x.channel === "wordpress" &&
+            x.wp_app_password_encrypted,
+        ),
+        hasPresets: csAll.some((x) => x.client_id === c.id),
+        hasKeywords: kwAll.some((x) => x.client_id === c.id),
+      });
+      const clientTasks = tasksAll.filter((t) => t.client_id === c.id);
+      const remaining = clientTasks.filter(
+        (t) => !t.done && !auto.has(t.task_key),
+      ).length;
+      return { id: c.id, name: c.name, total: clientTasks.length, remaining };
+    })
+    .filter((x) => x.total > 0 && x.remaining > 0);
+
   const monthLabel = `${now.getFullYear()}년 ${now.getMonth() + 1}월`;
 
   return (
@@ -131,6 +179,30 @@ export default async function DashboardPage() {
             코멘트를 확인하고 수정 후 다시 요청하세요.
           </p>
         </Link>
+      )}
+
+      {/* 온보딩 진행중 클라이언트 [A-2] */}
+      {onboardingClients.length > 0 && (
+        <section className="rounded-lg border border-border bg-surface p-4">
+          <h2 className="mb-3 text-sm font-semibold text-ink">
+            온보딩 진행중 클라이언트
+          </h2>
+          <ul className="space-y-2">
+            {onboardingClients.map((c) => (
+              <li key={c.id} className="flex items-center justify-between text-sm">
+                <Link
+                  href="/settings"
+                  className="text-ink hover:text-accent-deep hover:underline"
+                >
+                  {c.name}
+                </Link>
+                <span className="text-xs text-muted">
+                  미완료 {c.remaining} / {c.total}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {/* member: 내 담당을 최상단으로 */}

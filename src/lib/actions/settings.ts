@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { encryptSecret } from "@/lib/crypto";
+import { ensureOnboardingTasks } from "@/lib/actions/onboarding";
 
 interface ClientPatch {
   name?: string;
@@ -24,10 +25,15 @@ export async function saveClient(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { error } = await supabase
+  const { data: inserted, error } = await supabase
     .from("clients")
-    .insert({ ...patch, created_by: user?.id ?? null });
-  return error ? { ok: false, error: error.message } : { ok: true };
+    .insert({ ...patch, created_by: user?.id ?? null })
+    .select("id")
+    .single();
+  if (error) return { ok: false, error: error.message };
+  // 신규 고객사는 온보딩 체크리스트 자동 생성 [A-2]
+  if (inserted?.id) await ensureOnboardingTasks(inserted.id);
+  return { ok: true };
 }
 
 /** 채널 프리셋(jsonb) 저장. owner만. */
