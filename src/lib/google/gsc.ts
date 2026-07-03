@@ -63,10 +63,10 @@ export async function fetchGscSnapshot(
     return data.rows ?? [];
   }
 
-  // 합계(무차원 1행) + 상위 쿼리
+  // 합계(무차원 1행) + 쿼리 (기회 키워드 분류를 위해 25개까지)
   const [totalRows, queryRows] = await Promise.all([
     query([], 1),
-    query(["query"], 10),
+    query(["query"], 25),
   ]);
   const total = totalRows[0] ?? {};
 
@@ -75,12 +75,14 @@ export async function fetchGscSnapshot(
     impressions: total.impressions ?? 0,
     ctr: total.ctr ?? 0,
     position: total.position ?? 0,
-    topQueries: queryRows.map((r) => ({
-      query: r.keys?.[0] ?? "",
-      clicks: r.clicks ?? 0,
-      impressions: r.impressions ?? 0,
-      ctr: r.ctr ?? 0,
-      position: r.position ?? 0,
-    })),
+    topQueries: queryRows
+      .map((r) => ({
+        query: r.keys?.[0] ?? "",
+        clicks: r.clicks ?? 0,
+        impressions: r.impressions ?? 0,
+        ctr: r.ctr ?? 0,
+        position: r.position ?? 0,
+      }))
+      .sort((a, b) => b.clicks - a.clicks),
   };
 }

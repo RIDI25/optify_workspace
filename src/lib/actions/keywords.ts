@@ -61,6 +61,21 @@ export async function addKeywordsToPlan(
   return { ok: true, count: kws.length };
 }
 
+/** GSC 기회 키워드를 keywords 풀에 후보로 저장(source='gsc'). [B-4] */
+export async function saveKeywordFromGsc(
+  clientId: string,
+  keyword: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("keywords").insert({
+    client_id: clientId,
+    keyword,
+    source: "gsc",
+    status: "candidate",
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 /** 생성된 주제(제목안)를 플랜에 추가. 선택 채널 + (선택) 키워드 연결. */
 export async function addTopicToPlan(input: {
   clientId: string;

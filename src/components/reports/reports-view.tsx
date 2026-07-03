@@ -14,6 +14,12 @@ import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { channelLabel } from "@/lib/channels";
 import { saveReport } from "@/lib/actions/reports";
+import { saveKeywordFromGsc, addTopicToPlan } from "@/lib/actions/keywords";
+import {
+  classifyOpportunities,
+  type GscQueryRow,
+} from "@/lib/gsc-opportunities";
+import type { ChannelSettings } from "@/types/database";
 import {
   NaverMetricsForm,
   defaultNaverMetrics,
@@ -70,6 +76,22 @@ export function ReportsView() {
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [summaryMsg, setSummaryMsg] = useState(""); // 총평 실패 알림 [AUDIT M-5]
   const [saveMsg, setSaveMsg] = useState("");
+
+  // 기회 키워드 [B-4]
+  const [channels, setChannels] = useState<ChannelSettings[]>([]);
+  const [oppChannel, setOppChannel] = useState("");
+  const [savedKw, setSavedKw] = useState<Set<string>>(new Set());
+  const [addedPlan, setAddedPlan] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!selectedClientId) return;
+    createClient()
+      .from("channel_settings")
+      .select("id, channel")
+      .eq("client_id", selectedClientId)
+      .eq("is_active", true)
+      .then(({ data }) => setChannels((data ?? []) as ChannelSettings[]));
+  }, [selectedClientId]);
 
   useEffect(() => {
     if (!selectedClientId) return;
@@ -211,6 +233,22 @@ export function ReportsView() {
     setTimeout(() => setSaveMsg(""), 2000);
   }
 
+  const oppCh = oppChannel || channels[0]?.channel || "";
+  async function saveKw(query: string) {
+    if (!selectedClientId) return;
+    const r = await saveKeywordFromGsc(selectedClientId, query);
+    if (r.ok) setSavedKw((prev) => new Set(prev).add(query));
+  }
+  async function addPlan(query: string) {
+    if (!selectedClientId || !oppCh) return;
+    const r = await addTopicToPlan({
+      clientId: selectedClientId,
+      channel: oppCh,
+      title: query,
+    });
+    if (r.ok) setAddedPlan((prev) => new Set(prev).add(query));
+  }
+
   if (!selectedClientId) {
     return <p className="text-sm text-muted">상단에서 클라이언트를 선택하세요.</p>;
   }
@@ -220,8 +258,11 @@ export function ReportsView() {
     impressions?: number;
     ctr?: number;
     position?: number;
-    topQueries?: { query: string; clicks: number; impressions: number }[];
+    topQueries?: GscQueryRow[];
   } | null;
+  const opportunities = g?.topQueries
+    ? classifyOpportunities(g.topQueries)
+    : null;
   const a = ga4 as {
     sessions?: number;
     totalUsers?: number;
@@ -343,6 +384,46 @@ export function ReportsView() {
             )}
           </div>
         </div>
+
+        {/* 기회 키워드 [B-4] */}
+        {opportunities &&
+          (opportunities.lowCtr.length > 0 ||
+            opportunities.secondPage.length > 0) && (
+            <div className="mt-4 space-y-3 rounded-md border border-accent-deep/30 bg-tint/30 p-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-accent-deep">
+                  기회 키워드
+                </h3>
+                <select
+                  value={oppCh}
+                  onChange={(e) => setOppChannel(e.target.value)}
+                  className="rounded-md border border-border bg-surface px-2 py-1 text-xs"
+                >
+                  {channels.map((c) => (
+                    <option key={c.id} value={c.channel}>
+                      {channelLabel(c.channel)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <OppList
+                title="노출 대비 클릭 낮음 (노출 상위·CTR 하위)"
+                rows={opportunities.lowCtr}
+                savedKw={savedKw}
+                addedPlan={addedPlan}
+                onSave={saveKw}
+                onAdd={addPlan}
+              />
+              <OppList
+                title="2페이지 진입 직전 (순위 11~20위)"
+                rows={opportunities.secondPage}
+                savedKw={savedKw}
+                addedPlan={addedPlan}
+                onSave={saveKw}
+                onAdd={addPlan}
+              />
+            </div>
+          )}
       </Section>
 
       {/* ④ 네이버 성과 */}
@@ -416,6 +497,68 @@ export function ReportsView() {
           }}
         />
       </div>
+    </div>
+  );
+}
+
+function OppList({
+  title,
+  rows,
+  savedKw,
+  addedPlan,
+  onSave,
+  onAdd,
+}: {
+  title: string;
+  rows: GscQueryRow[];
+  savedKw: Set<string>;
+  addedPlan: Set<string>;
+  onSave: (q: string) => void;
+  onAdd: (q: string) => void;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div>
+        <p className="text-xs font-medium text-ink">{title}</p>
+        <p className="text-xs text-muted">해당 없음</p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="mb-1 text-xs font-medium text-ink">{title}</p>
+      <ul className="space-y-1">
+        {rows.map((r) => (
+          <li
+            key={r.query}
+            className="flex items-center justify-between gap-2 rounded-md bg-surface px-2.5 py-1.5 text-xs"
+          >
+            <span className="min-w-0 flex-1 truncate">
+              <span className="font-medium text-ink">{r.query}</span>
+              <span className="ml-2 text-muted">
+                노출 {Math.round(r.impressions).toLocaleString()} · CTR{" "}
+                {(r.ctr * 100).toFixed(1)}% · {r.position.toFixed(1)}위
+              </span>
+            </span>
+            <span className="flex shrink-0 gap-1">
+              <button
+                onClick={() => onSave(r.query)}
+                disabled={savedKw.has(r.query)}
+                className="rounded border border-border px-2 py-0.5 hover:bg-subtle disabled:opacity-50"
+              >
+                {savedKw.has(r.query) ? "저장됨" : "키워드로 저장"}
+              </button>
+              <button
+                onClick={() => onAdd(r.query)}
+                disabled={addedPlan.has(r.query)}
+                className="rounded border border-accent-deep px-2 py-0.5 text-accent-deep hover:bg-tint disabled:opacity-50"
+              >
+                {addedPlan.has(r.query) ? "추가됨" : "플랜에 추가"}
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
