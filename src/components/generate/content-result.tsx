@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { markdownToBasicHtml, stripMarkdown } from "@/lib/text";
 import { SendToPlanFooter } from "@/components/generate/send-to-plan";
-import { setPublishedStatus } from "@/lib/actions/contents";
+import { setPublishedStatus, deleteContent } from "@/lib/actions/contents";
 import type { ContentImage, ContentMeta } from "@/types/database";
 
 export interface ContentResultData {
@@ -25,6 +25,9 @@ export interface ContentResultData {
   canPublish?: boolean;
   /** 저장된 발행 완료 시각 (라이브러리에서 전달) [AUDIT M-1] */
   publishedAt?: string | null;
+  /** 삭제 버튼 노출(라이브러리 전용) + 삭제 후 콜백 */
+  canDelete?: boolean;
+  onDeleted?: () => void;
 }
 
 async function fetchBlob(url: string): Promise<Blob> {
@@ -105,6 +108,8 @@ export function ContentResultView(props: ContentResultData) {
   const [publishing, setPublishing] = useState(false);
   const [markedPublished, setMarkedPublished] = useState(!!props.publishedAt);
   const [markMsg, setMarkMsg] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState("");
 
   const displayHtml = isWp
     ? body
@@ -170,6 +175,20 @@ export function ContentResultView(props: ContentResultData) {
       setMarkMsg(`실패: ${r.error}`);
     }
     setTimeout(() => setMarkMsg(""), 2000);
+  }
+
+  async function onDelete() {
+    if (!props.contentId) return;
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    const r = await deleteContent(props.contentId);
+    if (r.ok) props.onDeleted?.();
+    else {
+      setDeleteMsg(`삭제 실패: ${r.error}`);
+      setConfirmDelete(false);
+    }
   }
 
   const footer = (
@@ -295,6 +314,33 @@ export function ContentResultView(props: ContentResultData) {
         )}
 
         {props.contentId && footer}
+
+        {props.canDelete && props.contentId && (
+          <div className="space-y-1 border-t border-border pt-3">
+            <button
+              onClick={onDelete}
+              className={[
+                "w-full rounded-md border px-3 py-2 text-sm font-medium",
+                confirmDelete
+                  ? "border-red-500 bg-red-50 text-red-600"
+                  : "border-border text-muted hover:bg-subtle",
+              ].join(" ")}
+            >
+              {confirmDelete
+                ? "정말 삭제할까요? 되돌릴 수 없습니다 (다시 클릭)"
+                : "이 콘텐츠 삭제"}
+            </button>
+            {confirmDelete && (
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="w-full rounded-md px-3 py-1 text-xs text-muted hover:text-ink"
+              >
+                취소
+              </button>
+            )}
+            {deleteMsg && <p className="text-xs text-red-600">{deleteMsg}</p>}
+          </div>
+        )}
       </div>
     </div>
   );

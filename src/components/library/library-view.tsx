@@ -204,6 +204,11 @@ export function LibraryView() {
             images={normalizeImages(selected.images)}
             canPublish={selected.channel === "wordpress"}
             publishedAt={selected.published_at}
+            canDelete
+            onDeleted={() => {
+              setContents((prev) => prev.filter((c) => c.id !== selected.id));
+              setSelected(null);
+            }}
           />
         </div>
       )}

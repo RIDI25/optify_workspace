@@ -39,6 +39,19 @@ export async function saveContentAssets(
 }
 
 /**
+ * 콘텐츠 삭제. RLS상 팀 멤버 누구나 가능(현행 정책 유지).
+ * contents.plan_id는 참조만 하므로 플랜은 영향 없음. Storage 이미지는 남김(정리는 후속 과제).
+ * content_comments는 FK ON DELETE CASCADE로 함께 삭제(0009).
+ */
+export async function deleteContent(
+  contentId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("contents").delete().eq("id", contentId);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/**
  * 발행 완료 수동 표시 [AUDIT M-1].
  * 네이버/스레드는 외부에서 수동 발행하므로 published_at을 직접 기록해
  * 대시보드·리포트의 발행 집계에 반영한다.
