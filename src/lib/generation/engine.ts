@@ -212,6 +212,46 @@ export function buildTopicsPrompt(input: {
   return { system, user };
 }
 
+/**
+ * 채널 프리셋 초안 생성 프롬프트. 참고 자료(기존 글·홈페이지 소개·타겟 설명)를 근거로
+ * 옵티파이 프리셋과 동일 스키마의 JSON을 생성. few-shot로 스키마를 고정.
+ */
+export function buildPresetDraftPrompt(input: {
+  channel: string;
+  references: { blog?: string; homepage?: string; target?: string };
+}): { system: string; user: string } {
+  const example = {
+    persona: "데이터로 설득하는 검색 마케팅 컨설턴트. 현실 고민에서 출발해 수치와 출처로 논증.",
+    target_reader: "전문직·지역 기반 사업자",
+    tone_rules: [
+      "'~입니다' 체 기본",
+      "도입: 인사 없이 독자의 문제 상황 → 수사적 질문 → 예고",
+      "핵심 주장에 구체 수치 + 출처. 확인 불가 수치는 [출처 필요]",
+    ],
+    structure_rules: [
+      "H2는 질문형 또는 결론형",
+      "첫 200단어 안에 핵심 질문 직접 답변(두괄식)",
+      "글 하단 FAQ 3~6개",
+    ],
+  };
+  const system = [
+    "너는 검색 마케팅 콘텐츠 전략가다. 고객사 참고 자료를 근거로 해당 채널의 콘텐츠 프리셋 초안을 만든다.",
+    "출력은 아래 예시와 '동일한 스키마'의 JSON 하나만(코드블록·설명 금지):",
+    "예시(스키마 참고용, 내용 복사 금지):\n" + JSON.stringify(example, null, 2),
+    "필드: persona(문자열), target_reader(문자열), tone_rules(문자열 배열 4~6), structure_rules(문자열 배열 4~8).",
+    "참고 자료에서 실제 톤·독자·구조를 추론해 그 고객사·채널에 맞게 작성. 근거 없는 수치 생성 금지.",
+  ].join("\n\n");
+  const user = [
+    `채널: ${input.channel}`,
+    input.references.homepage ? `[홈페이지 소개]\n${input.references.homepage}` : "",
+    input.references.target ? `[타겟 설명]\n${input.references.target}` : "",
+    input.references.blog ? `[기존 블로그 글 예시]\n${input.references.blog}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  return { system, user };
+}
+
 /** 부분 수정용 프롬프트 (선택 텍스트 + 지시 → 전체 본문 재작성) */
 export function buildRefinePrompt(
   fullBody: string,

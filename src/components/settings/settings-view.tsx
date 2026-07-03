@@ -392,6 +392,13 @@ function PresetsTab({
   const [json, setJson] = useState("");
   const [msg, setMsg] = useState("");
   const [assigneeMsg, setAssigneeMsg] = useState("");
+  // AI 프리셋 초안 [A-3]
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [refBlog, setRefBlog] = useState("");
+  const [refHome, setRefHome] = useState("");
+  const [refTarget, setRefTarget] = useState("");
+  const [draftBusy, setDraftBusy] = useState(false);
+  const [draftMsg, setDraftMsg] = useState("");
   const cid = clientId || clients[0]?.id || "";
 
   useEffect(() => {
@@ -441,6 +448,36 @@ function PresetsTab({
     const r = await savePreset(cid, channel, parsed);
     setMsg(r.ok ? "저장됨" : `실패: ${r.error}`);
     setTimeout(() => setMsg(""), 2000);
+  }
+
+  async function genDraft() {
+    if (!channel) return;
+    setDraftBusy(true);
+    setDraftMsg("");
+    try {
+      const res = await fetch("/api/settings/preset-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: cid,
+          channel,
+          references: { blog: refBlog, homepage: refHome, target: refTarget },
+        }),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setJson(JSON.stringify(d.preset, null, 2));
+        setDraftOpen(false);
+        setMsg("초안 생성됨 — 검토 후 '프리셋 저장'을 누르세요.");
+        setTimeout(() => setMsg(""), 3000);
+      } else {
+        setDraftMsg(`실패: ${d.error}`);
+      }
+    } catch (e) {
+      setDraftMsg(e instanceof Error ? e.message : "초안 생성 실패");
+    } finally {
+      setDraftBusy(false);
+    }
   }
 
   return (
@@ -496,16 +533,79 @@ function PresetsTab({
         className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs outline-none focus:border-accent-deep disabled:bg-subtle"
       />
       {!readOnly && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={save}
             className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-ink hover:opacity-90"
           >
             프리셋 저장
           </button>
+          <button
+            onClick={() => setDraftOpen(true)}
+            disabled={!channel}
+            className="rounded-md border border-accent-deep px-3 py-1.5 text-sm font-medium text-accent-deep hover:bg-tint disabled:opacity-50"
+          >
+            AI로 프리셋 초안 생성
+          </button>
           {msg && <span className="text-xs text-muted">{msg}</span>}
         </div>
       )}
+
+      {/* AI 프리셋 초안 모달 [A-3] */}
+      {draftOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-lg space-y-3 rounded-xl border border-border bg-surface p-5 shadow-lg">
+            <h3 className="text-base font-bold text-ink">
+              AI 프리셋 초안 생성 ({channelLabel(channel)})
+            </h3>
+            <p className="text-xs text-muted">
+              참고 자료를 넣을수록 정확해집니다. 생성 후 편집기에서 검토·수정하고
+              저장하세요.
+            </p>
+            <TextArea label="홈페이지 소개 텍스트" value={refHome} onChange={setRefHome} />
+            <TextArea label="타겟 독자 설명" value={refTarget} onChange={setRefTarget} />
+            <TextArea label="기존 블로그 글 예시(붙여넣기)" value={refBlog} onChange={setRefBlog} />
+            {draftMsg && <p className="text-xs text-red-600">{draftMsg}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDraftOpen(false)}
+                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
+              >
+                취소
+              </button>
+              <button
+                onClick={genDraft}
+                disabled={draftBusy}
+                className="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50"
+              >
+                {draftBusy ? "생성 중…" : "초안 생성"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TextArea({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted">{label}</label>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
+      />
     </div>
   );
 }
