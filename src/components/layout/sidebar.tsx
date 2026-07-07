@@ -27,18 +27,36 @@ export function Sidebar({ role }: { role: Role }) {
               ? pathname === "/"
               : pathname.startsWith(item.href);
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={[
-                "block rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                active
-                  ? "bg-tint text-accent-deep"
-                  : "text-ink hover:bg-subtle",
-              ].join(" ")}
-            >
-              {item.label}
-            </Link>
+            <div key={item.href}>
+              {item.section && (
+                <p className="px-3 pb-1 pt-4 text-[11px] font-medium uppercase tracking-wide text-muted">
+                  {item.section}
+                </p>
+              )}
+              <Link
+                href={item.href}
+                className={[
+                  "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                  active
+                    ? "bg-tint text-accent-deep"
+                    : "text-ink hover:bg-subtle",
+                ].join(" ")}
+              >
+                {item.step != null && (
+                  <span
+                    className={[
+                      "inline-flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded font-mono text-[10px]",
+                      active
+                        ? "bg-accent-deep text-white"
+                        : "bg-subtle text-muted",
+                    ].join(" ")}
+                  >
+                    {item.step}
+                  </span>
+                )}
+                {item.label}
+              </Link>
+            </div>
           );
         })}
       </nav>

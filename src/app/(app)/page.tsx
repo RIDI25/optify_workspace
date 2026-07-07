@@ -153,6 +153,38 @@ export default async function DashboardPage() {
         </p>
       </div>
 
+      {/* 콘텐츠 워크플로우 한눈에 */}
+      <section className="rounded-xl border border-border bg-surface p-4">
+        <h2 className="mb-3 text-sm font-semibold text-ink">
+          콘텐츠 워크플로우
+        </h2>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[
+            { step: 1, href: "/keywords", label: "키워드 발굴", desc: "리포트 분석 → ☆ 보관" },
+            { step: 2, href: "/plans", label: "플랜 기획", desc: "주제 뽑기 → 일정 배정" },
+            { step: 3, href: "/generate", label: "콘텐츠 생성", desc: "프리셋 기반 AI 생성" },
+            { step: 4, href: "/library", label: "검수·발행", desc: "승인 → WP·채널 발행" },
+            { step: 5, href: "/reports", label: "성과 확인", desc: "월간 리포트 · GSC" },
+          ].map((s, i) => (
+            <div key={s.step} className="flex items-center gap-1.5">
+              {i > 0 && <span className="text-muted">→</span>}
+              <Link
+                href={s.href}
+                className="group rounded-lg border border-border px-3 py-2 transition-colors hover:border-accent-deep hover:bg-tint/40"
+              >
+                <p className="text-xs font-semibold text-ink group-hover:text-accent-deep">
+                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded bg-subtle font-mono text-[10px] text-muted group-hover:bg-accent-deep group-hover:text-white">
+                    {s.step}
+                  </span>
+                  {s.label}
+                </p>
+                <p className="mt-0.5 text-[11px] text-muted">{s.desc}</p>
+              </Link>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* 승인 위젯 [Feature 3] */}
       {profile.role === "owner" && pendingCount > 0 && (
         <Link
