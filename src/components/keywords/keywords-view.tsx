@@ -117,6 +117,7 @@ export function KeywordsView() {
             keyword: r.keyword,
             avgMonthlySearches: r.monthlyTotal,
             competition: r.competition,
+            competitionIndex: null,
             cpcLow: null,
             cpcHigh: null,
           })),
@@ -219,7 +220,7 @@ export function KeywordsView() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6">
       <div>
         <h1 className="text-xl font-bold text-ink">키워드 리서치</h1>
         <p className="mt-1 text-sm text-muted">

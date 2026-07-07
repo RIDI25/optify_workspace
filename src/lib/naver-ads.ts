@@ -10,6 +10,8 @@ export interface NaverKeywordIdea {
   pcCtr: number;
   mobileCtr: number;
   competition: string; // 높음 | 중간 | 낮음
+  /** 월평균 노출 광고수 (plAvgDepth) */
+  avgAdDepth: number;
 }
 
 /** 네이버는 저볼륨을 "< 10" 문자열로 반환 — 숫자로 강제 */
@@ -83,6 +85,7 @@ export async function fetchNaverKeywordIdeas(
       monthlyAvePcCtr?: number | string;
       monthlyAveMobileCtr?: number | string;
       compIdx?: string;
+      plAvgDepth?: number | string;
     }[];
   };
 
@@ -97,6 +100,7 @@ export async function fetchNaverKeywordIdeas(
       pcCtr: toNum(r.monthlyAvePcCtr),
       mobileCtr: toNum(r.monthlyAveMobileCtr),
       competition: r.compIdx ?? "-",
+      avgAdDepth: toNum(r.plAvgDepth),
     };
   });
 }

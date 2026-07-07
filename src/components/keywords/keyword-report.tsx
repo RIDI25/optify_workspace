@@ -6,28 +6,25 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
-  Legend,
 } from "recharts";
 import { useClientContext } from "@/components/providers/client-context";
 import { saveKeywordToPool } from "@/lib/actions/keywords";
 import type { KeywordReport } from "@/types/keyword-report";
+import type { NaverKeywordIdea } from "@/lib/naver-ads";
+import type { KeywordIdea } from "@/lib/google-ads";
 
-// 검증된 2색 팔레트 (CVD ΔE 72) — PC=브랜드 딥그린, 모바일=블루
-const C_PC = "#057A4E";
-const C_MOBILE = "#2a78d6";
-const C_GRID = "#e4e9e7";
+// 검증된 팔레트 (CVD ΔE 72) — 네이버=브랜드 딥그린, 구글=블루
+const C_NAVER = "#057A4E";
+const C_GOOGLE = "#2a78d6";
 
 function fmt(n: number | null | undefined): string {
   return n != null ? n.toLocaleString() : "-";
 }
 
-/** 축 눈금용 축약 (12000 → 1.2만) */
+/** 12000 → 1.2만 */
 function compact(n: number): string {
   if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1).replace(/\.0$/, "")}억`;
   if (n >= 10_000) return `${(n / 10_000).toFixed(1).replace(/\.0$/, "")}만`;
@@ -36,9 +33,36 @@ function compact(n: number): string {
 
 const GOOGLE_COMP: Record<string, string> = {
   LOW: "낮음",
-  MEDIUM: "중간",
+  MEDIUM: "보통",
   HIGH: "높음",
 };
+
+/** 네이버 compIdx 표기 통일 (중간 → 보통) */
+function naverComp(v: string | null | undefined): string {
+  if (!v || v === "-") return "-";
+  return v === "중간" ? "보통" : v;
+}
+
+/**
+ * 포화도 등급 — 블로그 문서수 ÷ 월 검색량. 낮을수록 수요 대비 공급이 적다.
+ * 임계값은 내부 휴리스틱: 황금 <0.3 / 좋음 <2 / 보통 <10 / 포화 ≥10
+ */
+function satGrade(ratio: number): { label: string; emoji: string; cls: string } {
+  if (ratio < 0.3)
+    return { label: "황금", emoji: "💎", cls: "bg-sky-50 text-sky-700" };
+  if (ratio < 2)
+    return { label: "좋음", emoji: "🟢", cls: "bg-emerald-50 text-emerald-700" };
+  if (ratio < 10)
+    return { label: "보통", emoji: "🟡", cls: "bg-amber-50 text-amber-700" };
+  return { label: "포화", emoji: "🔴", cls: "bg-red-50 text-red-600" };
+}
+
+function compChipCls(label: string): string {
+  if (label === "낮음") return "bg-emerald-50 text-emerald-700";
+  if (label === "보통") return "bg-amber-50 text-amber-700";
+  if (label === "높음") return "bg-red-50 text-red-600";
+  return "bg-subtle text-muted";
+}
 
 type SaveState = "busy" | "saved" | "dup";
 
@@ -106,28 +130,37 @@ export function KeywordReportView() {
   const naver = report?.naver;
   const google = report?.google;
   const docCounts = naver?.docCounts ?? null;
-  const mainDoc =
-    docCounts && report
-      ? (docCounts[naver?.main?.keyword ?? ""] ?? docCounts[report.keyword] ?? null)
-      : null;
-  const saturation =
+  const docOf = (kw: string): number | null => docCounts?.[kw] ?? null;
+  const mainDoc = report
+    ? (docOf(naver?.main?.keyword ?? "") ??
+      docOf(google?.main?.keyword ?? "") ??
+      docOf(report.keyword))
+    : null;
+  const mainSat =
     mainDoc != null && naver?.main && naver.main.monthlyTotal > 0
       ? mainDoc / naver.main.monthlyTotal
       : null;
 
-  const naverBarData = (naver?.related ?? []).slice(0, 10).map((r) => ({
-    keyword: r.keyword,
-    PC: r.monthlyPc,
-    모바일: r.monthlyMobile,
-  }));
+  // 패널용 행: 메인 + 연관 (검색량 내림차순 정렬은 서버에서 완료)
+  const naverRows: NaverKeywordIdea[] = naver
+    ? [...(naver.main ? [naver.main] : []), ...naver.related]
+    : [];
+  const googleRows: KeywordIdea[] = google
+    ? [...(google.main ? [google.main] : []), ...google.related]
+    : [];
 
   const trendData = (google?.trend ?? []).map((v) => ({
-    label: `${String(v.year).slice(2)}.${String(v.month).padStart(2, "0")}`,
+    label: `${String(v.month).padStart(2, "0")}월`,
     검색량: v.searches,
   }));
 
+  const naverSave = (r: NaverKeywordIdea) =>
+    save(r.keyword, r.monthlyTotal, r.competition, "naver_ads");
+  const googleSave = (r: KeywordIdea) =>
+    save(r.keyword, r.avgMonthlySearches, r.competition, "google_ads");
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* 검색 */}
       <div className="flex gap-2">
         <input
@@ -135,15 +168,21 @@ export function KeywordReportView() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !busy && search()}
           placeholder="키워드 1개 입력. 예: 병원 마케팅"
-          className="w-full max-w-md rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
+          className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm outline-none focus:border-accent-deep"
         />
         <button
           onClick={search}
           disabled={busy || !input.trim()}
-          className="shrink-0 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50"
+          className="shrink-0 rounded-lg bg-accent-deep px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
         >
-          {busy ? "분석 중…" : "리포트 조회"}
+          {busy ? "분석 중…" : "분석하기"}
         </button>
+      </div>
+
+      {/* 팁 배너 */}
+      <div className="rounded-md border-l-4 border-amber-400 bg-amber-50 px-3 py-2 text-xs text-ink">
+        💡 <b>포화도 = 블로그 문서수 ÷ 월 검색량.</b> 💎황금·🟢좋음 키워드는 찾는
+        사람은 많은데 글이 적어서 상위 노출 기회가 커요.
       </div>
 
       {error && (
@@ -153,20 +192,14 @@ export function KeywordReportView() {
       )}
 
       {report && (
-        <div className="space-y-6">
-          {/* 헤더 + 메인 키워드 액션 */}
+        <div className="space-y-5">
+          {/* 헤더 + 메인 액션 */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-bold text-ink">
-                &ldquo;{report.keyword}&rdquo; 키워드 리포트
-              </h2>
-              <p className="text-xs text-muted">
-                {selectedClient?.name} · 네이버 검색광고 + Google Ads
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <SaveButton
-                state={saveStates[report.keyword]}
+            <h2 className="text-lg font-bold text-ink">
+              &ldquo;{report.keyword}&rdquo; 핵심 지표
+            </h2>
+            <div className="flex items-center gap-2">
+              <button
                 onClick={() =>
                   save(
                     report.keyword,
@@ -177,8 +210,16 @@ export function KeywordReportView() {
                     naver?.main ? "naver_ads" : "google_ads",
                   )
                 }
-              />
-              <GenerateLink keyword={report.keyword} primary />
+                disabled={!!saveStates[report.keyword]}
+                className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-70"
+              >
+                {saveStates[report.keyword] === "busy"
+                  ? "저장 중…"
+                  : saveStates[report.keyword]
+                    ? "⭐ 보관됨"
+                    : "☆ 보관함"}
+              </button>
+              <WriteLink keyword={report.keyword} primary />
             </div>
           </div>
 
@@ -190,336 +231,471 @@ export function KeywordReportView() {
             </ul>
           )}
 
-          {/* KPI 타일 */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            <StatTile
-              label="네이버 월간 검색량"
-              value={naver?.main ? compact(naver.main.monthlyTotal) : "-"}
-              sub={
-                naver?.main
-                  ? `PC ${compact(naver.main.monthlyPc)} · 모바일 ${compact(naver.main.monthlyMobile)}`
-                  : "데이터 없음"
-              }
-            />
-            <StatTile
-              label="구글 월평균 검색량"
-              value={
-                google?.main?.avgMonthlySearches != null
+          {/* KPI 4카드 */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* 네이버 월 검색량 */}
+            <KpiCard label="🟢 네이버 월 검색량">
+              <p className="font-mono text-2xl font-bold text-ink">
+                {naver?.main ? compact(naver.main.monthlyTotal) : "-"}
+              </p>
+              {naver?.main && naver.main.monthlyTotal > 0 && (
+                <>
+                  <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-subtle">
+                    <div
+                      className="h-full"
+                      style={{
+                        background: C_NAVER,
+                        width: `${(naver.main.monthlyPc / naver.main.monthlyTotal) * 100}%`,
+                      }}
+                    />
+                    <div
+                      className="h-full"
+                      style={{
+                        background: C_GOOGLE,
+                        width: `${(naver.main.monthlyMobile / naver.main.monthlyTotal) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-muted">
+                    PC {compact(naver.main.monthlyPc)} · 모바일{" "}
+                    {compact(naver.main.monthlyMobile)}
+                  </p>
+                </>
+              )}
+              {!naver?.main && (
+                <p className="mt-1.5 text-[11px] text-muted">데이터 없음</p>
+              )}
+            </KpiCard>
+
+            {/* 구글 월 검색량 */}
+            <KpiCard label="🔵 구글 월 검색량">
+              <p className="font-mono text-2xl font-bold text-ink">
+                {google?.main?.avgMonthlySearches != null
                   ? compact(google.main.avgMonthlySearches)
-                  : "-"
-              }
-              sub="최근 12개월 평균"
-            />
-            <StatTile
-              label="네이버 경쟁정도"
-              value={naver?.main?.competition ?? "-"}
-              sub="검색광고 기준"
-            />
-            <StatTile
-              label="구글 경쟁도"
-              value={
-                google?.main?.competition
-                  ? (GOOGLE_COMP[google.main.competition] ?? google.main.competition)
-                  : "-"
-              }
-              sub={
-                google?.main?.cpcLow != null && google?.main?.cpcHigh != null
-                  ? `CPC ${Math.round(google.main.cpcLow).toLocaleString()}~${Math.round(google.main.cpcHigh).toLocaleString()}원`
-                  : "CPC 정보 없음"
-              }
-            />
-            <StatTile
-              label="블로그 문서량"
-              value={mainDoc != null ? compact(mainDoc) : "-"}
-              sub={docCounts ? "네이버 블로그 누적" : "오픈API 키 필요"}
-            />
-            <StatTile
-              label="콘텐츠 포화도"
-              value={saturation != null ? saturation.toFixed(1) : "-"}
-              sub="문서량÷검색량 · 낮을수록 기회"
-            />
+                  : "-"}
+              </p>
+              <p className="mt-1.5 text-[11px] text-muted">
+                {google?.main?.cpcLow != null && google?.main?.cpcHigh != null
+                  ? `광고 입찰가 ${Math.round(google.main.cpcLow).toLocaleString()}~${Math.round(google.main.cpcHigh).toLocaleString()}원`
+                  : "입찰가 정보 없음"}
+              </p>
+            </KpiCard>
+
+            {/* 블로그 발행량 */}
+            <KpiCard label="📄 블로그 발행량 (문서수)">
+              <p className="font-mono text-2xl font-bold text-ink">
+                {mainDoc != null ? fmt(mainDoc) : "-"}
+              </p>
+              <div className="mt-1.5">
+                {mainSat != null ? <SatBadge ratio={mainSat} prefix="포화도 " /> : (
+                  <p className="text-[11px] text-muted">
+                    {docCounts ? "검색량 데이터 필요" : "오픈API 키 필요"}
+                  </p>
+                )}
+              </div>
+            </KpiCard>
+
+            {/* 경쟁 강도 */}
+            <KpiCard label="⚔️ 경쟁 강도">
+              <div className="flex flex-wrap gap-1.5">
+                <Chip cls={compChipCls(naverComp(naver?.main?.competition))}>
+                  네이버 {naverComp(naver?.main?.competition)}
+                </Chip>
+                <Chip
+                  cls={compChipCls(
+                    google?.main?.competition
+                      ? (GOOGLE_COMP[google.main.competition] ?? "-")
+                      : "-",
+                  )}
+                >
+                  구글{" "}
+                  {google?.main?.competition
+                    ? (GOOGLE_COMP[google.main.competition] ?? google.main.competition)
+                    : "-"}
+                </Chip>
+              </div>
+              {naver?.main && (
+                <p className="mt-1.5 text-[11px] text-muted">
+                  네이버 광고 {naver.main.avgAdDepth}개 노출 · 모바일 CTR{" "}
+                  {naver.main.mobileCtr}%
+                </p>
+              )}
+              {google?.main?.competitionIndex != null && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-subtle">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        background: C_NAVER,
+                        width: `${google.main.competitionIndex}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="text-[11px] text-muted">
+                    지수 {google.main.competitionIndex}
+                  </span>
+                </div>
+              )}
+            </KpiCard>
           </div>
 
-          {/* 차트 */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {naverBarData.length > 0 && (
-              <ChartCard title="네이버 연관 키워드 월간 검색량 TOP 10">
-                <div style={{ height: naverBarData.length * 34 + 70 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={naverBarData}
-                      layout="vertical"
-                      margin={{ top: 4, right: 16, bottom: 0, left: 8 }}
-                      barSize={16}
-                    >
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke={C_GRID}
-                        horizontal={false}
-                      />
-                      <XAxis
-                        type="number"
-                        fontSize={11}
-                        tickFormatter={compact}
-                        stroke="#9aa5a0"
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="keyword"
-                        width={110}
-                        fontSize={11}
-                        stroke="#9aa5a0"
-                      />
-                      <Tooltip
-                        formatter={(v) => Number(v).toLocaleString()}
-                        contentStyle={{ fontSize: 12 }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Bar
-                        dataKey="PC"
-                        stackId="a"
-                        fill={C_PC}
-                        stroke="#ffffff"
-                        strokeWidth={1}
-                      />
-                      <Bar
-                        dataKey="모바일"
-                        stackId="a"
-                        fill={C_MOBILE}
-                        stroke="#ffffff"
-                        strokeWidth={1}
-                        radius={[0, 4, 4, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-            )}
-
-            {trendData.length > 1 && (
-              <ChartCard title="구글 검색량 추이 (최근 12개월)">
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={trendData}
-                      margin={{ top: 8, right: 16, bottom: 0, left: 8 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke={C_GRID} />
-                      <XAxis dataKey="label" fontSize={11} stroke="#9aa5a0" />
-                      <YAxis
-                        fontSize={11}
-                        tickFormatter={compact}
-                        stroke="#9aa5a0"
-                      />
-                      <Tooltip
-                        formatter={(v) => Number(v).toLocaleString()}
-                        contentStyle={{ fontSize: 12 }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="검색량"
-                        stroke={C_PC}
-                        strokeWidth={2}
-                        dot={{ r: 2.5, fill: C_PC }}
-                        activeDot={{ r: 4 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </ChartCard>
-            )}
-          </div>
-
-          {/* 네이버 연관 키워드 테이블 */}
-          {naver && naver.related.length > 0 && (
-            <section className="space-y-2">
+          {/* 12개월 추이 */}
+          {trendData.length > 1 && (
+            <div className="rounded-xl border border-border bg-surface p-4">
               <h3 className="text-sm font-semibold text-ink">
-                네이버 연관 키워드 ({naver.related.length})
+                📈 최근 12개월 검색량 추이{" "}
+                <span className="font-normal text-muted">(구글 기준)</span>
               </h3>
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm">
-                  <thead className="bg-subtle text-left text-xs text-muted">
-                    <tr>
-                      <th className="px-3 py-2">키워드</th>
-                      <th className="px-3 py-2 text-right">PC</th>
-                      <th className="px-3 py-2 text-right">모바일</th>
-                      <th className="px-3 py-2 text-right">합계</th>
-                      <th className="px-3 py-2">경쟁</th>
-                      <th className="px-3 py-2 text-right" title="네이버 블로그 누적 문서 수">
-                        문서량
-                      </th>
-                      <th className="px-3 py-2 text-right" title="문서량÷검색량, 낮을수록 기회">
-                        포화도
-                      </th>
-                      <th className="px-3 py-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {naver.related.map((r) => {
-                      const doc = docCounts?.[r.keyword] ?? null;
-                      const sat =
-                        doc != null && r.monthlyTotal > 0
-                          ? (doc / r.monthlyTotal).toFixed(1)
-                          : null;
-                      return (
-                        <tr key={r.keyword} className="border-t border-border">
-                          <td className="px-3 py-2 font-medium text-ink">
-                            {r.keyword}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono">
-                            {fmt(r.monthlyPc)}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono">
-                            {fmt(r.monthlyMobile)}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono font-semibold">
-                            {fmt(r.monthlyTotal)}
-                          </td>
-                          <td className="px-3 py-2 text-muted">{r.competition}</td>
-                          <td className="px-3 py-2 text-right font-mono text-muted">
-                            {doc != null ? fmt(doc) : "-"}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono text-muted">
-                            {sat ?? "-"}
-                          </td>
-                          <td className="px-3 py-2">
-                            <RowActions
-                              state={saveStates[r.keyword]}
-                              onSave={() =>
-                                save(r.keyword, r.monthlyTotal, r.competition, "naver_ads")
-                              }
-                              keyword={r.keyword}
-                            />
-                          </td>
+              <p className="mt-0.5 text-xs text-muted">
+                상승 추세거나 시즌이 다가오는 키워드를 미리 잡으면 유리해요.
+              </p>
+              <div className="mt-3 h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={trendData}
+                    margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
+                  >
+                    <XAxis
+                      dataKey="label"
+                      fontSize={11}
+                      stroke="#9aa5a0"
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis hide />
+                    <Tooltip
+                      formatter={(v) => Number(v).toLocaleString()}
+                      contentStyle={{ fontSize: 12 }}
+                      cursor={{ fill: "rgba(0,0,0,0.04)" }}
+                    />
+                    <Bar
+                      dataKey="검색량"
+                      fill={C_GOOGLE}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={64}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* 네이버 / 구글 패널 */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            {/* ── 네이버 ── */}
+            <Panel
+              title="🟢 네이버 키워드 리포트"
+              count={naver?.related.length ?? 0}
+            >
+              {naverRows.length === 0 ? (
+                <p className="text-sm text-muted">데이터가 없습니다.</p>
+              ) : (
+                <>
+                  <BarList
+                    title={`연관 키워드 검색량 TOP ${Math.min(naverRows.length, 10)}`}
+                    color={C_NAVER}
+                    items={naverRows.slice(0, 10).map((r) => ({
+                      label: r.keyword,
+                      value: r.monthlyTotal,
+                    }))}
+                  />
+
+                  {/* 포화도 등급 요약 */}
+                  {docCounts && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(["황금", "좋음", "보통", "포화"] as const).map((g) => {
+                        const n = naverRows.filter((r) => {
+                          const d = docOf(r.keyword);
+                          return (
+                            d != null &&
+                            r.monthlyTotal > 0 &&
+                            satGrade(d / r.monthlyTotal).label === g
+                          );
+                        }).length;
+                        const sample = satGrade(
+                          g === "황금" ? 0 : g === "좋음" ? 1 : g === "보통" ? 5 : 99,
+                        );
+                        return (
+                          <Chip key={g} cls={sample.cls}>
+                            {sample.emoji} {g} {n}개
+                          </Chip>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-left text-xs text-muted">
+                        <tr className="border-b border-border">
+                          <th className="py-2 pr-2 font-medium">키워드</th>
+                          <th className="py-2 pr-2 text-right font-medium">월검색</th>
+                          <th className="py-2 pr-2 text-right font-medium">문서수</th>
+                          <th className="py-2 pr-2 font-medium">포화도</th>
+                          <th className="py-2 pr-2 font-medium">광고경쟁</th>
+                          <th className="py-2 font-medium"></th>
                         </tr>
+                      </thead>
+                      <tbody>
+                        {naverRows.map((r) => {
+                          const d = docOf(r.keyword);
+                          const sat =
+                            d != null && r.monthlyTotal > 0
+                              ? d / r.monthlyTotal
+                              : null;
+                          return (
+                            <tr key={r.keyword} className="border-b border-border/60">
+                              <td className="py-2 pr-2 font-medium text-ink">
+                                {r.keyword}
+                              </td>
+                              <td className="py-2 pr-2 text-right">
+                                <span className="font-mono font-semibold">
+                                  {compact(r.monthlyTotal)}
+                                </span>
+                                <span className="block text-[10px] text-muted">
+                                  PC {compact(r.monthlyPc)}·모{" "}
+                                  {compact(r.monthlyMobile)}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-2 text-right font-mono text-muted">
+                                {d != null ? fmt(d) : "-"}
+                              </td>
+                              <td className="py-2 pr-2">
+                                {sat != null ? <SatBadge ratio={sat} /> : "-"}
+                              </td>
+                              <td className="py-2 pr-2">
+                                <span
+                                  className={[
+                                    "rounded px-1.5 py-0.5 text-xs",
+                                    compChipCls(naverComp(r.competition)),
+                                  ].join(" ")}
+                                >
+                                  {naverComp(r.competition)}
+                                </span>
+                              </td>
+                              <td className="py-2">
+                                <RowActions
+                                  state={saveStates[r.keyword]}
+                                  onSave={() => naverSave(r)}
+                                  keyword={r.keyword}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </Panel>
+
+            {/* ── 구글 ── */}
+            <Panel
+              title="🔵 구글 키워드 리포트"
+              count={google?.related.length ?? 0}
+            >
+              {googleRows.length === 0 ? (
+                <p className="text-sm text-muted">데이터가 없습니다.</p>
+              ) : (
+                <>
+                  <BarList
+                    title={`연관 키워드 검색량 TOP ${Math.min(googleRows.length, 10)}`}
+                    color={C_GOOGLE}
+                    items={googleRows.slice(0, 10).map((r) => ({
+                      label: r.keyword,
+                      value: r.avgMonthlySearches ?? 0,
+                    }))}
+                  />
+
+                  {/* 경쟁 등급 요약 */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {(["LOW", "MEDIUM", "HIGH"] as const).map((g) => {
+                      const n = googleRows.filter((r) => r.competition === g).length;
+                      return (
+                        <Chip key={g} cls={compChipCls(GOOGLE_COMP[g])}>
+                          경쟁 {GOOGLE_COMP[g]} {n}개
+                        </Chip>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
+                  </div>
 
-          {/* 구글 연관 키워드 테이블 */}
-          {google && google.related.length > 0 && (
-            <section className="space-y-2">
-              <h3 className="text-sm font-semibold text-ink">
-                구글 연관 키워드 ({google.related.length})
-              </h3>
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm">
-                  <thead className="bg-subtle text-left text-xs text-muted">
-                    <tr>
-                      <th className="px-3 py-2">키워드</th>
-                      <th className="px-3 py-2 text-right">월 검색량</th>
-                      <th className="px-3 py-2">경쟁도</th>
-                      <th className="px-3 py-2 text-right">CPC 저~고 (원)</th>
-                      <th className="px-3 py-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {google.related.map((r) => (
-                      <tr key={r.keyword} className="border-t border-border">
-                        <td className="px-3 py-2 font-medium text-ink">{r.keyword}</td>
-                        <td className="px-3 py-2 text-right font-mono">
-                          {fmt(r.avgMonthlySearches)}
-                        </td>
-                        <td className="px-3 py-2 text-muted">
-                          {r.competition
-                            ? (GOOGLE_COMP[r.competition] ?? r.competition)
-                            : "-"}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-muted">
-                          {r.cpcLow != null && r.cpcHigh != null
-                            ? `${Math.round(r.cpcLow).toLocaleString()}~${Math.round(r.cpcHigh).toLocaleString()}`
-                            : "-"}
-                        </td>
-                        <td className="px-3 py-2">
-                          <RowActions
-                            state={saveStates[r.keyword]}
-                            onSave={() =>
-                              save(
-                                r.keyword,
-                                r.avgMonthlySearches,
-                                r.competition,
-                                "google_ads",
-                              )
-                            }
-                            keyword={r.keyword}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="text-left text-xs text-muted">
+                        <tr className="border-b border-border">
+                          <th className="py-2 pr-2 font-medium">키워드</th>
+                          <th className="py-2 pr-2 text-right font-medium">월검색</th>
+                          <th className="py-2 pr-2 font-medium">경쟁지수</th>
+                          <th className="py-2 pr-2 text-right font-medium">문서수</th>
+                          <th className="py-2 pr-2 text-right font-medium">
+                            입찰가(원)
+                          </th>
+                          <th className="py-2 font-medium"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {googleRows.map((r) => (
+                          <tr key={r.keyword} className="border-b border-border/60">
+                            <td className="py-2 pr-2 font-medium text-ink">
+                              {r.keyword}
+                            </td>
+                            <td className="py-2 pr-2 text-right font-mono font-semibold">
+                              {r.avgMonthlySearches != null
+                                ? compact(r.avgMonthlySearches)
+                                : "-"}
+                            </td>
+                            <td className="py-2 pr-2">
+                              {r.competitionIndex != null ? (
+                                <span className="flex items-center gap-1.5">
+                                  <span className="h-1.5 w-10 overflow-hidden rounded-full bg-subtle">
+                                    <span
+                                      className="block h-full rounded-full"
+                                      style={{
+                                        background: C_NAVER,
+                                        width: `${r.competitionIndex}%`,
+                                      }}
+                                    />
+                                  </span>
+                                  <span className="font-mono text-xs text-muted">
+                                    {r.competitionIndex}
+                                  </span>
+                                </span>
+                              ) : (
+                                "-"
+                              )}
+                            </td>
+                            <td className="py-2 pr-2 text-right font-mono text-muted">
+                              {docOf(r.keyword) != null ? fmt(docOf(r.keyword)) : "-"}
+                            </td>
+                            <td className="py-2 pr-2 text-right font-mono text-muted">
+                              {r.cpcLow != null && r.cpcHigh != null
+                                ? `${Math.round(r.cpcLow).toLocaleString()}~${Math.round(r.cpcHigh).toLocaleString()}`
+                                : "-"}
+                            </td>
+                            <td className="py-2">
+                              <RowActions
+                                state={saveStates[r.keyword]}
+                                onSave={() => googleSave(r)}
+                                keyword={r.keyword}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </Panel>
+          </div>
+
+          <p className="text-right text-xs text-muted">
+            {selectedClient?.name} · 네이버 검색광고 + Google Ads
+            {docCounts ? " + 네이버 오픈API" : ""}
+          </p>
         </div>
       )}
     </div>
   );
 }
 
-function StatTile({
+function KpiCard({
   label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <p className="text-xs text-muted">{label}</p>
-      <p className="mt-1 font-mono text-xl font-bold text-ink">{value}</p>
-      {sub && <p className="mt-0.5 text-[11px] text-muted">{sub}</p>}
-    </div>
-  );
-}
-
-function ChartCard({
-  title,
   children,
 }: {
-  title: string;
+  label: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
-      <h3 className="mb-3 text-sm font-semibold text-ink">{title}</h3>
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <p className="mb-2 text-xs font-medium text-muted">{label}</p>
       {children}
     </div>
   );
 }
 
-function SaveButton({
-  state,
-  onClick,
+function Panel({
+  title,
+  count,
+  children,
 }: {
-  state?: SaveState;
-  onClick: () => void;
+  title: string;
+  count: number;
+  children: React.ReactNode;
 }) {
-  const done = state === "saved" || state === "dup";
   return (
-    <button
-      onClick={onClick}
-      disabled={!!state}
-      className="rounded-md border border-accent-deep px-3 py-1.5 text-sm font-medium text-accent-deep hover:bg-tint disabled:opacity-60"
-    >
-      {state === "busy"
-        ? "저장 중…"
-        : state === "dup"
-          ? "이미 보관함에 있음"
-          : done
-            ? "보관함에 저장됨"
-            : "보관함에 저장"}
-    </button>
+    <div className="space-y-4 rounded-xl border border-border bg-surface p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-ink">{title}</h3>
+        <span className="text-xs text-muted">연관 {count}개</span>
+      </div>
+      {children}
+    </div>
   );
 }
 
-function GenerateLink({
+function Chip({ cls, children }: { cls: string; children: React.ReactNode }) {
+  return (
+    <span
+      className={["rounded-full px-2 py-0.5 text-xs font-medium", cls].join(" ")}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SatBadge({ ratio, prefix }: { ratio: number; prefix?: string }) {
+  const g = satGrade(ratio);
+  return (
+    <span
+      className={["rounded-full px-2 py-0.5 text-xs font-medium", g.cls].join(" ")}
+      title={`포화도 ${ratio.toFixed(1)} (문서수÷검색량)`}
+    >
+      {g.emoji} {prefix}
+      {g.label}
+    </span>
+  );
+}
+
+/** 가로 막대 리스트 (키워드 | 막대 | 값) */
+function BarList({
+  title,
+  items,
+  color,
+}: {
+  title: string;
+  items: { label: string; value: number }[];
+  color: string;
+}) {
+  const max = Math.max(...items.map((i) => i.value), 1);
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium text-muted">{title}</p>
+      {items.map((it) => (
+        <div key={it.label} className="flex items-center gap-2 text-xs">
+          <span className="w-24 shrink-0 truncate text-ink" title={it.label}>
+            {it.label}
+          </span>
+          <span className="h-4 flex-1 overflow-hidden rounded bg-subtle">
+            <span
+              className="block h-full rounded"
+              style={{
+                background: color,
+                width: `${Math.max((it.value / max) * 100, 2)}%`,
+              }}
+            />
+          </span>
+          <span className="w-12 shrink-0 text-right font-mono text-muted">
+            {compact(it.value)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function WriteLink({
   keyword,
   primary,
 }: {
@@ -533,10 +709,10 @@ function GenerateLink({
       className={
         primary
           ? "rounded-md bg-accent-deep px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90"
-          : "rounded-md border border-border px-2 py-1 text-xs text-ink hover:bg-subtle"
+          : "shrink-0 rounded border border-border px-1.5 py-0.5 text-xs text-ink hover:bg-subtle"
       }
     >
-      콘텐츠 생성 →
+      ✍️ {primary ? "이 키워드로 글쓰기" : "글쓰기"}
     </Link>
   );
 }
@@ -551,21 +727,16 @@ function RowActions({
   keyword: string;
 }) {
   return (
-    <div className="flex justify-end gap-1.5 whitespace-nowrap">
+    <div className="flex items-center justify-end gap-1 whitespace-nowrap">
       <button
         onClick={onSave}
         disabled={!!state}
-        className="rounded-md border border-border px-2 py-1 text-xs text-ink hover:bg-subtle disabled:opacity-60"
+        title={state ? "보관함에 저장됨" : "보관함에 저장"}
+        className="rounded px-1 text-base leading-none text-amber-500 hover:bg-subtle disabled:cursor-default"
       >
-        {state === "busy"
-          ? "…"
-          : state === "dup"
-            ? "보관됨"
-            : state === "saved"
-              ? "저장됨"
-              : "보관함"}
+        {state === "busy" ? "…" : state ? "★" : "☆"}
       </button>
-      <GenerateLink keyword={keyword} />
+      <WriteLink keyword={keyword} />
     </div>
   );
 }

@@ -82,12 +82,14 @@ export async function POST(req: NextRequest) {
     // 추이 배열은 메인 키워드만 사용 — 연관은 페이로드에서 제거 (undefined는 JSON 직렬화에서 탈락)
     .map((r) => ({ ...r, monthlySearchVolumes: undefined }));
 
-  // 문서량: 메인 + 네이버 연관 상위 10개
+  // 문서량: 메인 + 네이버/구글 연관 각 상위 10개
   let docCounts: Record<string, number> | null = null;
   if (hasNaverOpenApi()) {
     const targets = [
       naverMain?.keyword ?? kw,
+      googleMain?.keyword ?? kw,
       ...naverRelated.slice(0, 10).map((r) => r.keyword),
+      ...googleRelated.slice(0, 10).map((r) => r.keyword),
     ];
     docCounts = await fetchBlogDocCounts(targets);
   } else {

@@ -14,6 +14,8 @@ export interface KeywordIdea {
   keyword: string;
   avgMonthlySearches: number | null;
   competition: string | null;
+  /** 경쟁지수 0~100 */
+  competitionIndex: number | null;
   cpcLow: number | null;
   cpcHigh: number | null;
   /** 최근 12개월 검색량 추이 (리포트용 — DB에는 저장하지 않음) */
@@ -53,6 +55,7 @@ interface IdeaRow {
   keyword_idea_metrics?: {
     avg_monthly_searches?: number | string | null;
     competition?: string | number | null;
+    competition_index?: number | string | null;
     low_top_of_page_bid_micros?: number | string | null;
     high_top_of_page_bid_micros?: number | string | null;
     monthly_search_volumes?:
@@ -128,6 +131,8 @@ export async function generateKeywordIdeas(
       avgMonthlySearches:
         m?.avg_monthly_searches != null ? Number(m.avg_monthly_searches) : null,
       competition: competitionName(m?.competition),
+      competitionIndex:
+        m?.competition_index != null ? Number(m.competition_index) : null,
       cpcLow: fromMicros(m?.low_top_of_page_bid_micros),
       cpcHigh: fromMicros(m?.high_top_of_page_bid_micros),
       monthlySearchVolumes: volumes.length > 0 ? volumes : undefined,
