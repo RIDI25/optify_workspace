@@ -19,11 +19,16 @@ import {
   classifyOpportunities,
   type GscQueryRow,
 } from "@/lib/gsc-opportunities";
-import type { ChannelSettings } from "@/types/database";
+import type { ChannelSettings, SectionReports } from "@/types/database";
 import {
   NaverMetricsForm,
   defaultNaverMetrics,
 } from "@/components/reports/naver-metrics-form";
+import {
+  GoogleAnalyticsPanel,
+  type GscData,
+  type Ga4Data,
+} from "@/components/reports/google-analytics-panel";
 import { ReportExport } from "@/components/reports/report-export";
 import type { NaverManualMetrics } from "@/types/database";
 
@@ -53,6 +58,8 @@ interface PlanRow {
   scheduled_date: string | null;
 }
 
+type ReportScope = "google" | "naver" | "overall";
+
 export function ReportsView() {
   const { selectedClientId, selectedClient } = useClientContext();
   const [ym, setYm] = useState(currentYm());
@@ -61,7 +68,11 @@ export function ReportsView() {
   const [ga4, setGa4] = useState<Record<string, unknown> | null>(null);
   const [analyticsMsg, setAnalyticsMsg] = useState("");
   const [naver, setNaver] = useState<NaverManualMetrics>(defaultNaverMetrics());
-  const [summary, setSummary] = useState("");
+
+  // 3단 리포트 텍스트
+  const [googleReport, setGoogleReport] = useState("");
+  const [naverReport, setNaverReport] = useState("");
+  const [summary, setSummary] = useState(""); // 종합 (ai_summary)
   const [status, setStatus] = useState<"draft" | "final">("draft");
 
   const [contentSummary, setContentSummary] = useState<ContentSummary>({
@@ -70,11 +81,13 @@ export function ReportsView() {
     byChannel: {},
   });
   const [nextPlans, setNextPlans] = useState<PlanRow[]>([]);
-  const [trend, setTrend] = useState<{ month: string; views: number; visitors: number }[]>([]);
+  const [trend, setTrend] = useState<
+    { month: string; views: number; visitors: number }[]
+  >([]);
 
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
-  const [loadingSummary, setLoadingSummary] = useState(false);
-  const [summaryMsg, setSummaryMsg] = useState(""); // 총평 실패 알림 [AUDIT M-5]
+  const [genBusy, setGenBusy] = useState<ReportScope | null>(null);
+  const [genMsg, setGenMsg] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
 
   // 기회 키워드 [B-4]
@@ -108,9 +121,13 @@ export function ReportsView() {
       setGsc(report?.gsc_snapshot ?? null);
       setGa4(report?.ga4_snapshot ?? null);
       setNaver(report?.naver_manual_metrics ?? defaultNaverMetrics());
+      const sections = (report?.section_reports ?? {}) as SectionReports;
+      setGoogleReport(sections.google ?? "");
+      setNaverReport(sections.naver ?? "");
       setSummary(report?.ai_summary ?? "");
       setStatus(report?.status ?? "draft");
       setAnalyticsMsg("");
+      setGenMsg("");
       setSaveMsg("");
 
       // 발행 콘텐츠 집계
@@ -152,10 +169,12 @@ export function ReportsView() {
         .select("year_month, naver_manual_metrics")
         .eq("client_id", selectedClientId)
         .order("year_month");
-      const t = ((past ?? []) as {
-        year_month: string;
-        naver_manual_metrics: NaverManualMetrics | null;
-      }[])
+      const t = (
+        (past ?? []) as {
+          year_month: string;
+          naver_manual_metrics: NaverManualMetrics | null;
+        }[]
+      )
         .filter((p) => p.naver_manual_metrics)
         .map((p) => ({
           month: p.year_month,
@@ -181,7 +200,7 @@ export function ReportsView() {
       setGsc(d.gsc ?? null);
       setGa4(d.ga4 ?? null);
       const errs = [d.gscError, d.ga4Error].filter(Boolean);
-      setAnalyticsMsg(errs.length ? errs.join(" · ") : "성과 불러오기 완료");
+      setAnalyticsMsg(errs.length ? errs.join(" · ") : "구글 데이터 불러오기 완료");
     } catch (e) {
       setAnalyticsMsg(e instanceof Error ? e.message : "조회 실패");
     } finally {
@@ -189,10 +208,22 @@ export function ReportsView() {
     }
   }
 
-  async function genSummary() {
+  /** 스코프별 AI 리포트 생성 (google / naver / overall) */
+  async function genReport(scope: ReportScope) {
     if (!selectedClientId) return;
-    setLoadingSummary(true);
-    setSummaryMsg("");
+    setGenBusy(scope);
+    setGenMsg("");
+    const data =
+      scope === "google"
+        ? { gsc, ga4 }
+        : scope === "naver"
+          ? { naver_manual_metrics: naver, monthly_trend: trend }
+          : {
+              google_report: googleReport,
+              naver_report: naverReport,
+              content_summary: contentSummary,
+              next_month_plans: nextPlans,
+            };
     try {
       const res = await fetch("/api/reports/summary", {
         method: "POST",
@@ -200,19 +231,22 @@ export function ReportsView() {
         body: JSON.stringify({
           clientId: selectedClientId,
           yearMonth: ym,
-          data: { content_summary: contentSummary, gsc, ga4, naver, next_month_plans: nextPlans },
+          scope,
+          data,
         }),
       });
       const d = await res.json();
       if (d.ok) {
-        setSummary(d.summary);
+        if (scope === "google") setGoogleReport(d.summary);
+        else if (scope === "naver") setNaverReport(d.summary);
+        else setSummary(d.summary);
       } else {
-        setSummaryMsg(`총평 생성 실패: ${d.error ?? "알 수 없음"}`);
+        setGenMsg(`리포트 생성 실패: ${d.error ?? "알 수 없음"}`);
       }
     } catch (e) {
-      setSummaryMsg(e instanceof Error ? e.message : "총평 생성 실패");
+      setGenMsg(e instanceof Error ? e.message : "리포트 생성 실패");
     } finally {
-      setLoadingSummary(false);
+      setGenBusy(null);
     }
   }
 
@@ -226,11 +260,14 @@ export function ReportsView() {
       content_summary: contentSummary as unknown as Record<string, unknown>,
       next_month_plans: { plans: nextPlans },
       ai_summary: summary,
+      section_reports: { google: googleReport, naver: naverReport },
       status: st,
     });
     setStatus(st);
-    setSaveMsg(res.ok ? "저장됨" : `저장 실패: ${res.error}`);
-    setTimeout(() => setSaveMsg(""), 2000);
+    setSaveMsg(
+      res.ok ? (res.warning ?? "저장됨") : `저장 실패: ${res.error}`,
+    );
+    setTimeout(() => setSaveMsg(""), res.warning ? 8000 : 2000);
   }
 
   const oppCh = oppChannel || channels[0]?.channel || "";
@@ -253,29 +290,33 @@ export function ReportsView() {
     return <p className="text-sm text-muted">상단에서 클라이언트를 선택하세요.</p>;
   }
 
-  const g = gsc as {
-    clicks?: number;
-    impressions?: number;
-    ctr?: number;
-    position?: number;
-    topQueries?: GscQueryRow[];
-  } | null;
+  const g = gsc as GscData | null;
+  const a = ga4 as Ga4Data | null;
   const opportunities = g?.topQueries
-    ? classifyOpportunities(g.topQueries)
+    ? classifyOpportunities(g.topQueries as GscQueryRow[])
     : null;
-  const a = ga4 as {
-    sessions?: number;
-    totalUsers?: number;
-    screenPageViews?: number;
-    averageSessionDuration?: number;
-  } | null;
+
+  const hasGoogleData = !!(g || a);
+  const naverFilled =
+    (naver.blog_total_views ?? 0) > 0 ||
+    (naver.blog_visitor_count ?? 0) > 0 ||
+    (naver.top_inflow_keywords?.length ?? 0) > 0;
+
+  const steps = [
+    { n: 1, label: "구글 리포트", done: !!googleReport.trim() },
+    { n: 2, label: "네이버 리포트", done: !!naverReport.trim() },
+    { n: 3, label: "종합 리포트", done: !!summary.trim() },
+  ];
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-ink">월간 리포트</h1>
-          <p className="mt-1 text-sm text-muted">{selectedClient?.name}</p>
+          <p className="mt-1 text-sm text-muted">
+            {selectedClient?.name} · ① 구글 → ② 네이버 → ③ 종합 순서로
+            생성하세요.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <input
@@ -297,93 +338,53 @@ export function ReportsView() {
         </div>
       </div>
 
-      {/* ① 요약 + AI 총평 */}
-      <Section title="① 요약 + AI 총평">
-        <button
-          onClick={genSummary}
-          disabled={loadingSummary}
-          className="mb-3 rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50"
-        >
-          {loadingSummary ? "생성 중…" : "AI 총평 생성"}
-        </button>
-        {summaryMsg && (
-          <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
-            {summaryMsg}
-          </p>
-        )}
-        <textarea
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          rows={5}
-          placeholder="AI 총평을 생성하거나 직접 작성하세요."
-          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm leading-relaxed outline-none focus:border-accent-deep"
-        />
-      </Section>
-
-      {/* ② 발행 콘텐츠 */}
-      <Section title="② 발행 콘텐츠 (자동 집계)">
-        <div className="flex flex-wrap gap-6 text-sm">
-          <Stat label="총 생성" value={`${contentSummary.total}건`} />
-          <Stat label="발행" value={`${contentSummary.published}건`} />
-          {Object.entries(contentSummary.byChannel).map(([ch, n]) => (
-            <Stat key={ch} label={channelLabel(ch)} value={`${n}건`} />
-          ))}
-        </div>
-      </Section>
-
-      {/* ③ 홈페이지 성과 */}
-      <Section title="③ 홈페이지 성과 (GSC / GA4)">
-        <button
-          onClick={fetchAnalytics}
-          disabled={loadingAnalytics}
-          className="mb-3 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-subtle disabled:opacity-50"
-        >
-          {loadingAnalytics ? "불러오는 중…" : "성과 불러오기"}
-        </button>
-        {analyticsMsg && <p className="mb-3 text-xs text-muted">{analyticsMsg}</p>}
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="rounded-md border border-border p-3">
-            <p className="mb-2 text-sm font-semibold text-ink">GSC</p>
-            {g ? (
-              <div className="space-y-1 text-sm text-muted">
-                <div>클릭 {Math.round(g.clicks ?? 0).toLocaleString()}</div>
-                <div>노출 {Math.round(g.impressions ?? 0).toLocaleString()}</div>
-                <div>CTR {((g.ctr ?? 0) * 100).toFixed(1)}%</div>
-                <div>평균순위 {(g.position ?? 0).toFixed(1)}</div>
-                {g.topQueries && g.topQueries.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-xs text-ink">상위 쿼리</p>
-                    <ul className="mt-1 space-y-0.5 text-xs">
-                      {g.topQueries.slice(0, 10).map((q, i) => (
-                        <li key={i} className="flex justify-between gap-2">
-                          <span className="truncate">{q.query}</span>
-                          <span className="font-mono">{q.clicks}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-muted">데이터 없음</p>
-            )}
+      {/* 진행 단계 */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {steps.map((s, i) => (
+          <div key={s.n} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-muted">→</span>}
+            <span
+              className={[
+                "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium",
+                s.done
+                  ? "border-accent-deep/40 bg-tint text-accent-deep"
+                  : "border-border bg-surface text-muted",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "inline-flex h-4 w-4 items-center justify-center rounded-full font-mono text-[10px]",
+                  s.done ? "bg-accent-deep text-white" : "bg-subtle text-muted",
+                ].join(" ")}
+              >
+                {s.done ? "✓" : s.n}
+              </span>
+              {s.label}
+            </span>
           </div>
-          <div className="rounded-md border border-border p-3">
-            <p className="mb-2 text-sm font-semibold text-ink">GA4</p>
-            {a ? (
-              <div className="space-y-1 text-sm text-muted">
-                <div>세션 {Math.round(a.sessions ?? 0).toLocaleString()}</div>
-                <div>사용자 {Math.round(a.totalUsers ?? 0).toLocaleString()}</div>
-                <div>페이지뷰 {Math.round(a.screenPageViews ?? 0).toLocaleString()}</div>
-                <div>
-                  평균 체류 {Math.round(a.averageSessionDuration ?? 0)}초
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted">데이터 없음</p>
-            )}
-          </div>
+        ))}
+      </div>
+
+      {genMsg && (
+        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
+          {genMsg}
+        </p>
+      )}
+
+      {/* ═══ ① 구글 리포트 ═══ */}
+      <Section title="① 구글 성과 (GSC · GA4)">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <button
+            onClick={fetchAnalytics}
+            disabled={loadingAnalytics}
+            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50"
+          >
+            {loadingAnalytics ? "불러오는 중…" : "📥 구글 데이터 불러오기"}
+          </button>
+          {analyticsMsg && <span className="text-xs text-muted">{analyticsMsg}</span>}
         </div>
+
+        <GoogleAnalyticsPanel gsc={g} ga4={a} />
 
         {/* 기회 키워드 [B-4] */}
         {opportunities &&
@@ -424,10 +425,40 @@ export function ReportsView() {
               />
             </div>
           )}
+
+        {/* 구글 리포트 생성 */}
+        <div className="mt-4 border-t border-border pt-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => genReport("google")}
+              disabled={genBusy !== null || !hasGoogleData}
+              className="rounded-md bg-accent-deep px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {genBusy === "google" ? "생성 중…" : "🤖 구글 리포트 생성"}
+            </button>
+            {!hasGoogleData && (
+              <span className="text-xs text-muted">
+                먼저 구글 데이터를 불러오세요.
+              </span>
+            )}
+          </div>
+          <textarea
+            value={googleReport}
+            onChange={(e) => setGoogleReport(e.target.value)}
+            rows={6}
+            placeholder="구글 데이터 기반 AI 리포트가 여기에 생성됩니다. 직접 수정할 수 있어요."
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm leading-relaxed outline-none focus:border-accent-deep"
+          />
+        </div>
       </Section>
 
-      {/* ④ 네이버 성과 */}
-      <Section title="④ 네이버 성과 (수동 입력)">
+      {/* ═══ ② 네이버 리포트 ═══ */}
+      <Section title="② 네이버 성과 (스크린샷 분석)">
+        <p className="mb-3 rounded-md bg-subtle px-3 py-2 text-xs text-muted">
+          네이버 블로그 통계 스크린샷을 첨부하고 <b>분석하기</b>를 누르면 AI가
+          수치를 자동으로 채워요. 값을 확인·수정한 뒤 네이버 리포트를
+          생성하세요.
+        </p>
         <NaverMetricsForm
           clientId={selectedClientId}
           value={naver}
@@ -442,30 +473,107 @@ export function ReportsView() {
                 <XAxis dataKey="month" fontSize={11} />
                 <YAxis fontSize={11} />
                 <Tooltip />
-                <Line type="monotone" dataKey="views" name="조회수" stroke="#057A4E" />
-                <Line type="monotone" dataKey="visitors" name="방문자" stroke="#00E87B" />
+                <Line type="monotone" dataKey="views" name="조회수" stroke="#057A4E" strokeWidth={2} />
+                <Line type="monotone" dataKey="visitors" name="방문자" stroke="#2a78d6" strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
+
+        {/* 네이버 리포트 생성 */}
+        <div className="mt-4 border-t border-border pt-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => genReport("naver")}
+              disabled={genBusy !== null || !naverFilled}
+              className="rounded-md bg-accent-deep px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {genBusy === "naver" ? "생성 중…" : "🤖 네이버 리포트 생성"}
+            </button>
+            {!naverFilled && (
+              <span className="text-xs text-muted">
+                먼저 스크린샷 분석 또는 수치 입력이 필요해요.
+              </span>
+            )}
+          </div>
+          <textarea
+            value={naverReport}
+            onChange={(e) => setNaverReport(e.target.value)}
+            rows={5}
+            placeholder="네이버 성과 기반 AI 리포트가 여기에 생성됩니다. 직접 수정할 수 있어요."
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm leading-relaxed outline-none focus:border-accent-deep"
+          />
+        </div>
       </Section>
 
-      {/* ⑤ 다음 달 플랜 */}
-      <Section title={`⑤ 다음 달 플랜 (${nextYm(ym)})`}>
-        {nextPlans.length === 0 ? (
-          <p className="text-sm text-muted">예정된 플랜이 없습니다.</p>
-        ) : (
-          <ul className="space-y-1 text-sm">
-            {nextPlans.map((p, i) => (
-              <li key={i} className="flex justify-between gap-3">
-                <span className="truncate text-ink">{p.title}</span>
-                <span className="shrink-0 text-xs text-muted">
-                  {p.scheduled_date} · {channelLabel(p.channel)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+      {/* ═══ ③ 종합 리포트 ═══ */}
+      <Section title="③ 종합 리포트">
+        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* 발행 콘텐츠 집계 */}
+          <div className="rounded-md border border-border p-3">
+            <p className="mb-2 text-xs font-semibold text-ink">
+              발행 콘텐츠 (자동 집계)
+            </p>
+            <div className="flex flex-wrap gap-5 text-sm">
+              <Stat label="총 생성" value={`${contentSummary.total}건`} />
+              <Stat label="발행" value={`${contentSummary.published}건`} />
+              {Object.entries(contentSummary.byChannel).map(([ch, n]) => (
+                <Stat key={ch} label={channelLabel(ch)} value={`${n}건`} />
+              ))}
+            </div>
+          </div>
+          {/* 다음 달 플랜 */}
+          <div className="rounded-md border border-border p-3">
+            <p className="mb-2 text-xs font-semibold text-ink">
+              다음 달 플랜 ({nextYm(ym)})
+            </p>
+            {nextPlans.length === 0 ? (
+              <p className="text-sm text-muted">예정된 플랜이 없습니다.</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {nextPlans.slice(0, 6).map((p, i) => (
+                  <li key={i} className="flex justify-between gap-3">
+                    <span className="truncate text-ink">{p.title}</span>
+                    <span className="shrink-0 text-xs text-muted">
+                      {p.scheduled_date} · {channelLabel(p.channel)}
+                    </span>
+                  </li>
+                ))}
+                {nextPlans.length > 6 && (
+                  <li className="text-xs text-muted">
+                    외 {nextPlans.length - 6}건
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => genReport("overall")}
+            disabled={
+              genBusy !== null || !googleReport.trim() || !naverReport.trim()
+            }
+            className="rounded-md bg-accent-deep px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {genBusy === "overall" ? "생성 중…" : "🤖 종합 리포트 생성"}
+          </button>
+          {(!googleReport.trim() || !naverReport.trim()) && (
+            <span className="text-xs text-muted">
+              구글·네이버 리포트를 먼저 생성하면 활성화됩니다. (구글{" "}
+              {googleReport.trim() ? "✓" : "✗"} · 네이버{" "}
+              {naverReport.trim() ? "✓" : "✗"})
+            </span>
+          )}
+        </div>
+        <textarea
+          value={summary}
+          onChange={(e) => setSummary(e.target.value)}
+          rows={8}
+          placeholder="구글·네이버 리포트를 종합한 최종 리포트가 여기에 생성됩니다."
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm leading-relaxed outline-none focus:border-accent-deep"
+        />
       </Section>
 
       {/* 저장 / 내보내기 */}
@@ -565,7 +673,7 @@ function OppList({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-border bg-surface p-4">
+    <section className="rounded-xl border border-border bg-surface p-4">
       <h2 className="mb-3 text-sm font-semibold text-ink">{title}</h2>
       {children}
     </section>

@@ -15,6 +15,18 @@ export interface GscSnapshot {
     ctr: number;
     position: number;
   }[];
+  /** 일별 추이 (차트용) */
+  daily: { date: string; clicks: number; impressions: number }[];
+  /** 상위 페이지 10개 */
+  topPages: {
+    page: string;
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  }[];
+  /** 기기별 (DESKTOP/MOBILE/TABLET) */
+  devices: { device: string; clicks: number; impressions: number }[];
 }
 
 interface GscRow {
@@ -27,7 +39,7 @@ interface GscRow {
 
 /**
  * GSC Search Analytics query. siteUrl 예: 'sc-domain:optify.kr' 또는 'https://optify.kr/'.
- * 기간 합계 + 상위 쿼리 10개.
+ * 기간 합계 + 상위 쿼리 25개 + 일별 추이 + 상위 페이지 + 기기별.
  */
 export async function fetchGscSnapshot(
   siteUrl: string,
@@ -63,11 +75,15 @@ export async function fetchGscSnapshot(
     return data.rows ?? [];
   }
 
-  // 합계(무차원 1행) + 쿼리 (기회 키워드 분류를 위해 25개까지)
-  const [totalRows, queryRows] = await Promise.all([
-    query([], 1),
-    query(["query"], 25),
-  ]);
+  // 합계(무차원 1행) + 쿼리(기회 키워드 분류용 25개) + 일별 + 페이지 + 기기
+  const [totalRows, queryRows, dateRows, pageRows, deviceRows] =
+    await Promise.all([
+      query([], 1),
+      query(["query"], 25),
+      query(["date"], 31),
+      query(["page"], 10),
+      query(["device"], 3),
+    ]);
   const total = totalRows[0] ?? {};
 
   return {
@@ -84,5 +100,26 @@ export async function fetchGscSnapshot(
         position: r.position ?? 0,
       }))
       .sort((a, b) => b.clicks - a.clicks),
+    daily: dateRows
+      .map((r) => ({
+        date: r.keys?.[0] ?? "",
+        clicks: r.clicks ?? 0,
+        impressions: r.impressions ?? 0,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    topPages: pageRows
+      .map((r) => ({
+        page: r.keys?.[0] ?? "",
+        clicks: r.clicks ?? 0,
+        impressions: r.impressions ?? 0,
+        ctr: r.ctr ?? 0,
+        position: r.position ?? 0,
+      }))
+      .sort((a, b) => b.clicks - a.clicks),
+    devices: deviceRows.map((r) => ({
+      device: r.keys?.[0] ?? "",
+      clicks: r.clicks ?? 0,
+      impressions: r.impressions ?? 0,
+    })),
   };
 }

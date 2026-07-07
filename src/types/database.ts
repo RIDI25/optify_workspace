@@ -113,6 +113,12 @@ export interface ContentComment {
   created_at: string;
 }
 
+/** 섹션별 AI 리포트 텍스트 (ai_summary는 종합 리포트) [migrations/0008] */
+export interface SectionReports {
+  google?: string;
+  naver?: string;
+}
+
 export interface Report extends Timestamps {
   id: string;
   client_id: string;
@@ -123,6 +129,7 @@ export interface Report extends Timestamps {
   content_summary: Record<string, unknown> | null;
   next_month_plans: Record<string, unknown> | null;
   ai_summary: string | null;
+  section_reports: SectionReports | null;
   exported_files: { format: string; storage_path: string; exported_at: string }[];
   status: ReportStatus;
 }
