@@ -1,12 +1,14 @@
 /**
  * 네이버 오픈API (developers.naver.com) — 블로그 검색의 total로 "문서량"을 구한다.
- * 검색광고 API와 별개 키: NAVER_CLIENT_ID / NAVER_CLIENT_SECRET (없으면 문서량 생략).
+ * 검색광고 API와 별개 키: NAVER_OPENAPI_CLIENT_ID / NAVER_OPENAPI_CLIENT_SECRET (없으면 문서량 생략).
  */
 
 const BLOG_SEARCH_URL = "https://openapi.naver.com/v1/search/blog.json";
 
 export function hasNaverOpenApi(): boolean {
-  return !!(process.env.NAVER_CLIENT_ID && process.env.NAVER_CLIENT_SECRET);
+  return !!(
+    process.env.NAVER_OPENAPI_CLIENT_ID && process.env.NAVER_OPENAPI_CLIENT_SECRET
+  );
 }
 
 async function fetchBlogDocCount(keyword: string): Promise<number | null> {
@@ -14,8 +16,8 @@ async function fetchBlogDocCount(keyword: string): Promise<number | null> {
     `${BLOG_SEARCH_URL}?query=${encodeURIComponent(keyword)}&display=1`,
     {
       headers: {
-        "X-Naver-Client-Id": process.env.NAVER_CLIENT_ID!,
-        "X-Naver-Client-Secret": process.env.NAVER_CLIENT_SECRET!,
+        "X-Naver-Client-Id": process.env.NAVER_OPENAPI_CLIENT_ID!,
+        "X-Naver-Client-Secret": process.env.NAVER_OPENAPI_CLIENT_SECRET!,
       },
     },
   );

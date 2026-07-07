@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
     docCounts = await fetchBlogDocCounts(targets);
   } else {
     warnings.push(
-      "네이버 오픈API 키(NAVER_CLIENT_ID/NAVER_CLIENT_SECRET)가 없어 블로그 문서량을 생략했습니다.",
+      "네이버 오픈API 키(NAVER_OPENAPI_CLIENT_ID/NAVER_OPENAPI_CLIENT_SECRET)가 없어 블로그 문서량을 생략했습니다.",
     );
   }
 
