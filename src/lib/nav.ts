@@ -14,6 +14,7 @@ export interface NavItem {
 /** 메뉴는 실제 업무 흐름 순서: 발굴 → 기획 → 생성 → 검수·발행 → 성과 */
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "대시보드" },
+  { href: "/daily", label: "☕ 데일리 리포트" },
   { href: "/keywords", label: "키워드 리서치", step: 1, section: "콘텐츠 워크플로우" },
   { href: "/plans", label: "콘텐츠 플랜", step: 2 },
   { href: "/generate", label: "콘텐츠 생성", step: 3 },
