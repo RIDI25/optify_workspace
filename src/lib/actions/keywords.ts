@@ -61,6 +61,38 @@ export async function addKeywordsToPlan(
   return { ok: true, count: kws.length };
 }
 
+/**
+ * 리포트의 키워드를 보관함(keywords 풀)에 후보로 저장.
+ * 같은 클라이언트에 동일 키워드가 있으면 중복 저장하지 않는다.
+ */
+export async function saveKeywordToPool(input: {
+  clientId: string;
+  keyword: string;
+  avgMonthlySearches?: number | null;
+  competition?: string | null;
+  source?: string; // 'naver_ads' | 'google_ads'
+}): Promise<{ ok: boolean; duplicated?: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("keywords")
+    .select("id")
+    .eq("client_id", input.clientId)
+    .eq("keyword", input.keyword)
+    .limit(1)
+    .maybeSingle();
+  if (existing) return { ok: true, duplicated: true };
+
+  const { error } = await supabase.from("keywords").insert({
+    client_id: input.clientId,
+    keyword: input.keyword,
+    avg_monthly_searches: input.avgMonthlySearches ?? null,
+    competition: input.competition ?? null,
+    source: input.source ?? "naver_ads",
+    status: "candidate",
+  });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 /** GSC 기회 키워드를 keywords 풀에 후보로 저장(source='gsc'). [B-4] */
 export async function saveKeywordFromGsc(
   clientId: string,

@@ -5,16 +5,23 @@ import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { getChannel } from "@/lib/channels";
 import { addKeywordsToPlan, addTopicToPlan } from "@/lib/actions/keywords";
+import { KeywordReportView } from "@/components/keywords/keyword-report";
 import type { KeywordIdea } from "@/lib/google-ads";
 import type { NaverKeywordIdea } from "@/lib/naver-ads";
 import type { ChannelSettings, Keyword } from "@/types/database";
 
-type Tab = "research" | "pool";
+type Tab = "report" | "research" | "pool";
 type Source = "google" | "naver";
+
+const TAB_LABELS: Record<Tab, string> = {
+  report: "키워드 리포트",
+  research: "다중 리서치",
+  pool: "저장된 키워드 풀",
+};
 
 export function KeywordsView() {
   const { selectedClientId, selectedClient } = useClientContext();
-  const [tab, setTab] = useState<Tab>("research");
+  const [tab, setTab] = useState<Tab>("report");
 
   const [source, setSource] = useState<Source>("google");
   const [seeds, setSeeds] = useState("");
@@ -221,7 +228,7 @@ export function KeywordsView() {
       </div>
 
       <div className="flex gap-2 border-b border-border">
-        {(["research", "pool"] as Tab[]).map((t) => (
+        {(["report", "research", "pool"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -232,10 +239,12 @@ export function KeywordsView() {
                 : "text-muted",
             ].join(" ")}
           >
-            {t === "research" ? "리서치" : "저장된 키워드 풀"}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
+
+      {tab === "report" && <KeywordReportView />}
 
       {tab === "research" && (
         <div className="space-y-4">

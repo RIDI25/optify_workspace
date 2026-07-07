@@ -4,12 +4,20 @@ import { GoogleAdsApi, enums } from "google-ads-api";
 const KOREA_GEO = "geoTargetConstants/2410";
 const KOREAN_LANG = "languageConstants/1012";
 
+export interface MonthlySearchVolume {
+  year: number;
+  month: number; // 1~12
+  searches: number;
+}
+
 export interface KeywordIdea {
   keyword: string;
   avgMonthlySearches: number | null;
   competition: string | null;
   cpcLow: number | null;
   cpcHigh: number | null;
+  /** 최근 12개월 검색량 추이 (리포트용 — DB에는 저장하지 않음) */
+  monthlySearchVolumes?: MonthlySearchVolume[];
 }
 
 function fromMicros(v: unknown): number | null {
@@ -28,6 +36,18 @@ function competitionName(v: unknown): string | null {
   return String(v);
 }
 
+/** MonthOfYear enum(JANUARY=2 … DECEMBER=13) 또는 이름 문자열 → 1~12 */
+function toMonthNumber(v: unknown): number | null {
+  if (typeof v === "number") {
+    return v >= 2 && v <= 13 ? v - 1 : null;
+  }
+  if (typeof v === "string") {
+    const n = enums.MonthOfYear[v as keyof typeof enums.MonthOfYear];
+    return typeof n === "number" && n >= 2 && n <= 13 ? n - 1 : null;
+  }
+  return null;
+}
+
 interface IdeaRow {
   text?: string | null;
   keyword_idea_metrics?: {
@@ -35,6 +55,13 @@ interface IdeaRow {
     competition?: string | number | null;
     low_top_of_page_bid_micros?: number | string | null;
     high_top_of_page_bid_micros?: number | string | null;
+    monthly_search_volumes?:
+      | {
+          year?: number | string | null;
+          month?: number | string | null;
+          monthly_searches?: number | string | null;
+        }[]
+      | null;
   } | null;
 }
 
@@ -87,6 +114,15 @@ export async function generateKeywordIdeas(
 
   return results.map((row) => {
     const m = row.keyword_idea_metrics;
+    const volumes = (m?.monthly_search_volumes ?? [])
+      .map((v) => {
+        const month = toMonthNumber(v.month);
+        const year = v.year != null ? Number(v.year) : null;
+        if (month == null || year == null || !Number.isFinite(year)) return null;
+        return { year, month, searches: Number(v.monthly_searches ?? 0) };
+      })
+      .filter((v): v is MonthlySearchVolume => v !== null)
+      .sort((a, b) => a.year - b.year || a.month - b.month);
     return {
       keyword: row.text ?? "",
       avgMonthlySearches:
@@ -94,6 +130,7 @@ export async function generateKeywordIdeas(
       competition: competitionName(m?.competition),
       cpcLow: fromMicros(m?.low_top_of_page_bid_micros),
       cpcHigh: fromMicros(m?.high_top_of_page_bid_micros),
+      monthlySearchVolumes: volumes.length > 0 ? volumes : undefined,
     };
   });
 }
