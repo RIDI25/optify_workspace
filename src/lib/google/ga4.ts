@@ -45,7 +45,7 @@ export async function fetchGa4Snapshot(
       dimensions: [{ name: "date" }],
       metrics: [{ name: "sessions" }, { name: "totalUsers" }],
       orderBys: [{ dimension: { dimensionName: "date" } }],
-      limit: 31,
+      limit: 400, // 임의 기간(최대 1년) 일별 조회
     }),
     client.runReport({
       property,

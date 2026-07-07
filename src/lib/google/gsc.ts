@@ -80,7 +80,7 @@ export async function fetchGscSnapshot(
     await Promise.all([
       query([], 1),
       query(["query"], 25),
-      query(["date"], 31),
+      query(["date"], 400), // 임의 기간(최대 1년) 일별 조회
       query(["page"], 10),
       query(["device"], 3),
     ]);

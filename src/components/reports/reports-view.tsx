@@ -36,6 +36,15 @@ function currentYm(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
+/** 로컬 기준 YYYY-MM-DD (toISOString은 UTC라 KST 오전에 하루 밀림) */
+function ymdLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return ymdLocal(d);
+}
 function monthRange(ym: string): { start: string; end: string } {
   const [y, m] = ym.split("-").map(Number);
   const end = new Date(y, m, 0).getDate();
@@ -44,6 +53,11 @@ function monthRange(ym: string): { start: string; end: string } {
 function nextYm(ym: string): string {
   const [y, m] = ym.split("-").map(Number);
   const d = new Date(y, m, 1); // m is 1-based → Date month index m = 다음 달
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+function prevYm(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 2, 1); // m-2 = 전월의 month index
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
@@ -67,6 +81,9 @@ export function ReportsView() {
   const [gsc, setGsc] = useState<Record<string, unknown> | null>(null);
   const [ga4, setGa4] = useState<Record<string, unknown> | null>(null);
   const [analyticsMsg, setAnalyticsMsg] = useState("");
+  // 구글 조회 기간 (기본: 이번 달 1일~오늘)
+  const [pStart, setPStart] = useState(() => `${currentYm()}-01`);
+  const [pEnd, setPEnd] = useState(() => ymdLocal(new Date()));
   const [naver, setNaver] = useState<NaverManualMetrics>(defaultNaverMetrics());
 
   // 3단 리포트 텍스트
@@ -105,6 +122,16 @@ export function ReportsView() {
       .eq("is_active", true)
       .then(({ data }) => setChannels((data ?? []) as ChannelSettings[]));
   }, [selectedClientId]);
+
+  /** 월 변경 시 조회 기간도 해당 월로 리셋 (이번 달은 오늘까지) */
+  function changeYm(next: string) {
+    setYm(next);
+    if (!/^\d{4}-\d{2}$/.test(next)) return;
+    const { start, end } = monthRange(next);
+    const today = ymdLocal(new Date());
+    setPStart(start);
+    setPEnd(end > today ? today : end);
+  }
 
   useEffect(() => {
     if (!selectedClientId) return;
@@ -194,13 +221,26 @@ export function ReportsView() {
       const res = await fetch("/api/reports/analytics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: selectedClientId, yearMonth: ym }),
+        body: JSON.stringify({
+          clientId: selectedClientId,
+          yearMonth: ym,
+          startDate: pStart,
+          endDate: pEnd,
+        }),
       });
       const d = await res.json();
+      if (!d.ok) {
+        setAnalyticsMsg(d.error ?? "조회 실패");
+        return;
+      }
       setGsc(d.gsc ?? null);
       setGa4(d.ga4 ?? null);
       const errs = [d.gscError, d.ga4Error].filter(Boolean);
-      setAnalyticsMsg(errs.length ? errs.join(" · ") : "구글 데이터 불러오기 완료");
+      setAnalyticsMsg(
+        errs.length
+          ? errs.join(" · ")
+          : `${d.period?.startDate ?? pStart} ~ ${d.period?.endDate ?? pEnd} 데이터 불러오기 완료`,
+      );
     } catch (e) {
       setAnalyticsMsg(e instanceof Error ? e.message : "조회 실패");
     } finally {
@@ -322,7 +362,7 @@ export function ReportsView() {
           <input
             type="month"
             value={ym}
-            onChange={(e) => setYm(e.target.value)}
+            onChange={(e) => changeYm(e.target.value)}
             className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
           />
           <span
@@ -373,15 +413,67 @@ export function ReportsView() {
 
       {/* ═══ ① 구글 리포트 ═══ */}
       <Section title="① 구글 성과 (GSC · GA4)">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <button
-            onClick={fetchAnalytics}
-            disabled={loadingAnalytics}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50"
-          >
-            {loadingAnalytics ? "불러오는 중…" : "📥 구글 데이터 불러오기"}
-          </button>
-          {analyticsMsg && <span className="text-xs text-muted">{analyticsMsg}</span>}
+        <div className="mb-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted">조회 기간</span>
+            <input
+              type="date"
+              value={pStart}
+              max={pEnd}
+              onChange={(e) => setPStart(e.target.value)}
+              className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+            <span className="text-muted">~</span>
+            <input
+              type="date"
+              value={pEnd}
+              min={pStart}
+              onChange={(e) => setPEnd(e.target.value)}
+              className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm"
+            />
+            {(
+              [
+                {
+                  label: "이번 달",
+                  start: `${currentYm()}-01`,
+                  end: ymdLocal(new Date()),
+                },
+                {
+                  label: "지난달",
+                  start: monthRange(prevYm(currentYm())).start,
+                  end: monthRange(prevYm(currentYm())).end,
+                },
+                { label: "최근 28일", start: daysAgo(27), end: ymdLocal(new Date()) },
+                { label: "최근 90일", start: daysAgo(89), end: ymdLocal(new Date()) },
+              ] as const
+            ).map((p) => (
+              <button
+                key={p.label}
+                onClick={() => {
+                  setPStart(p.start);
+                  setPEnd(p.end);
+                }}
+                className="rounded-full border border-border px-2.5 py-1 text-xs text-muted hover:bg-subtle hover:text-ink"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={fetchAnalytics}
+              disabled={loadingAnalytics}
+              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50"
+            >
+              {loadingAnalytics ? "불러오는 중…" : "📥 구글 데이터 불러오기"}
+            </button>
+            {analyticsMsg && (
+              <span className="text-xs text-muted">{analyticsMsg}</span>
+            )}
+            <span className="text-[11px] text-muted">
+              ※ GSC는 집계가 2~3일 늦어 최근 며칠은 비어 있을 수 있어요.
+            </span>
+          </div>
         </div>
 
         <GoogleAnalyticsPanel gsc={g} ga4={a} />
