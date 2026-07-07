@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { collectNews } from "@/lib/daily-report/collect";
+import { windowHoursKst } from "@/lib/daily-report/generate";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-/** KST 기준 월요일이면 72시간(주말 소식 포함), 아니면 48시간 */
-function windowHoursKst(): number {
-  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  return kst.getUTCDay() === 1 ? 72 : 48;
-}
 
 /** 모니터링 소스 RSS 수집. body 없음. */
 export async function POST() {
