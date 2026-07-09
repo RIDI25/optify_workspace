@@ -1,4 +1,5 @@
 import { brandRulesBlock } from "@/lib/generation/brand-rules";
+import { businessContextBlock } from "@/lib/generation/business-context";
 
 export interface GenerateInput {
   channel: string;
@@ -7,6 +8,8 @@ export interface GenerateInput {
   contentType?: string | null;
   topic: string;
   extraInstructions?: string;
+  /** 옵티파이(is_internal) 클라이언트일 때만 사업 컨텍스트를 주입 */
+  isInternalClient?: boolean;
 }
 
 /** preset의 키를 한글 라벨로 매핑 (표시/프롬프트용) */
@@ -65,6 +68,7 @@ function renderContentTypeTemplate(
 
 export function buildSystemPrompt(input: GenerateInput): string {
   const parts: string[] = [brandRulesBlock()];
+  if (input.isInternalClient) parts.push(businessContextBlock());
 
   parts.push(
     "당신은 옵티파이(검색 마케팅 회사)의 콘텐츠 작가입니다. 아래 채널 프리셋을 철저히 준수해 글을 작성하세요.",
@@ -136,9 +140,11 @@ export function buildWordpressJsonPrompt(input: {
   keyword: string;
   extraInstructions?: string;
   imageCount: number;
+  isInternalClient?: boolean;
 }): { system: string; user: string } {
   const system = [
     brandRulesBlock(),
+    input.isInternalClient ? businessContextBlock() : "",
     "당신은 옵티파이(검색 마케팅 회사)의 워드프레스 SEO 블로그 작가입니다. 아래 채널 프리셋을 철저히 준수하세요.",
     renderPreset(input.preset),
     [
@@ -198,11 +204,13 @@ export function buildTopicsPrompt(input: {
   channel: string;
   preset: Record<string, unknown>;
   keywords: string[];
+  isInternalClient?: boolean;
 }): { system: string; user: string } {
   const persona = String(input.preset.persona ?? "");
   const target = String(input.preset.target_reader ?? "일반 독자");
   const system = [
     brandRulesBlock(),
+    input.isInternalClient ? businessContextBlock() : "",
     `너는 옵티파이의 ${input.channel} 콘텐츠 기획자다.`,
     persona ? `[페르소나]\n  ${persona}` : "",
     `[대상 독자]\n  ${target}`,

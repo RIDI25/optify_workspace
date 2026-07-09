@@ -34,10 +34,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "채널 프리셋이 없습니다." });
   }
 
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("is_internal")
+    .eq("id", clientId)
+    .single();
+
   const { system, user: userPrompt } = buildTopicsPrompt({
     channel,
     preset: settings.preset as Record<string, unknown>,
     keywords,
+    isInternalClient: clientRow?.is_internal ?? false,
   });
 
   try {

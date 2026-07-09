@@ -53,6 +53,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("is_internal")
+    .eq("id", clientId)
+    .single();
+
   // 글 길이 기준 이미지 3~4장 (롱폼 기본 4장)
   const imageCount = 4;
   const { system, user: userPrompt } = buildWordpressJsonPrompt({
@@ -61,6 +67,7 @@ export async function POST(req: NextRequest) {
     keyword: keyword?.trim() || topic.trim(),
     extraInstructions,
     imageCount,
+    isInternalClient: clientRow?.is_internal ?? false,
   });
 
   try {

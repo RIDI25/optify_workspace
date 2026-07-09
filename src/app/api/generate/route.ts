@@ -49,6 +49,12 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("is_internal")
+    .eq("id", body.clientId)
+    .single();
+
   const preset = settings.preset as Record<string, unknown>;
   const system = buildSystemPrompt({
     channel: body.channel,
@@ -56,6 +62,7 @@ export async function POST(req: NextRequest) {
     contentType: body.contentType ?? null,
     topic: body.topic,
     extraInstructions: body.extraInstructions,
+    isInternalClient: clientRow?.is_internal ?? false,
   });
   const userPrompt = buildUserPrompt({
     channel: body.channel,
