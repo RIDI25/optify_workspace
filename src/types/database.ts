@@ -83,6 +83,8 @@ export interface ContentMeta {
   slug?: string;
   meta_description?: string;
   faq?: { question: string; answer: string }[];
+  /** 네이버 블로그 카테고리 라벨 */
+  naver_category?: string;
 }
 
 export interface Content extends Timestamps {

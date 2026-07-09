@@ -5,6 +5,11 @@ import { buildSystemPrompt, buildUserPrompt } from "@/lib/generation/engine";
 import { logApiUsage } from "@/lib/usage";
 import { approvalFieldsForCreator } from "@/lib/approval";
 import {
+  getNaverCategory,
+  matchNaverCategoryByLabel,
+  NAVER_CATEGORY_MARKER_RE,
+} from "@/lib/naver-categories";
+import {
   META_DELIMITER,
   type StreamMeta,
 } from "@/lib/generation/stream-protocol";
@@ -19,6 +24,8 @@ interface Body {
   topic: string;
   extraInstructions?: string;
   planId?: string | null;
+  /** 네이버 블로그 카테고리 key ('auto' 가능) */
+  naverCategory?: string | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -63,6 +70,7 @@ export async function POST(req: NextRequest) {
     topic: body.topic,
     extraInstructions: body.extraInstructions,
     isInternalClient: clientRow?.is_internal ?? false,
+    naverCategory: body.naverCategory ?? null,
   });
   const userPrompt = buildUserPrompt({
     channel: body.channel,
@@ -107,6 +115,23 @@ export async function POST(req: NextRequest) {
         meta.inputTokens = final.usage.input_tokens;
         meta.outputTokens = final.usage.output_tokens;
 
+        // 네이버: 카테고리 확정 — 사용자가 고른 값 우선, auto면 본문 끝 마커에서 파싱
+        if (body.channel === "naver_blog") {
+          const picked =
+            body.naverCategory && body.naverCategory !== "auto"
+              ? (getNaverCategory(body.naverCategory)?.label ?? null)
+              : null;
+          const m = fullText.match(NAVER_CATEGORY_MARKER_RE);
+          if (m) {
+            fullText = fullText.replace(NAVER_CATEGORY_MARKER_RE, "").trimEnd();
+          }
+          meta.naverCategory =
+            picked ??
+            (m
+              ? (matchNaverCategoryByLabel(m[1])?.label ?? m[1].trim())
+              : null);
+        }
+
         // 생성 결과 저장 (승인 상태: owner→approved, member→pending)
         const approval = await approvalFieldsForCreator(supabase, user.id);
         const { data: inserted } = await supabase
@@ -127,6 +152,14 @@ export async function POST(req: NextRequest) {
           .select("id")
           .single();
         meta.contentId = inserted?.id ?? null;
+
+        // 카테고리는 meta 컬럼에 best-effort 저장 (0006 미적용 환경에서도 생성은 성공)
+        if (inserted?.id && meta.naverCategory) {
+          await supabase
+            .from("contents")
+            .update({ meta: { naver_category: meta.naverCategory } })
+            .eq("id", inserted.id);
+        }
 
         // 플랜 연결 시 상태를 review로
         if (body.planId) {

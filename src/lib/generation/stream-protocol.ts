@@ -10,5 +10,7 @@ export interface StreamMeta {
   inputTokens: number;
   outputTokens: number;
   model: string;
+  /** 네이버 블로그: 이 글이 들어갈 카테고리 라벨 (선택 또는 모델 자동 판정) */
+  naverCategory?: string | null;
   error?: string;
 }

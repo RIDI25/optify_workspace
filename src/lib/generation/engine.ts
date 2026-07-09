@@ -1,5 +1,6 @@
 import { brandRulesBlock } from "@/lib/generation/brand-rules";
 import { businessContextBlock } from "@/lib/generation/business-context";
+import { naverCategoryPromptBlock } from "@/lib/naver-categories";
 
 export interface GenerateInput {
   channel: string;
@@ -10,6 +11,8 @@ export interface GenerateInput {
   extraInstructions?: string;
   /** 옵티파이(is_internal) 클라이언트일 때만 사업 컨텍스트를 주입 */
   isInternalClient?: boolean;
+  /** 네이버 블로그 카테고리 key. 'auto'면 모델이 선택해 마커로 알린다 */
+  naverCategory?: string | null;
 }
 
 /** preset의 키를 한글 라벨로 매핑 (표시/프롬프트용) */
@@ -93,6 +96,7 @@ export function buildSystemPrompt(input: GenerateInput): string {
   );
 
   if (input.channel === "naver_blog") {
+    parts.push(naverCategoryPromptBlock(input.naverCategory));
     parts.push(
       [
         "[네이버 마무리 규칙]",

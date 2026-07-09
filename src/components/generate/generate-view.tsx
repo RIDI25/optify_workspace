@@ -5,6 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { getChannel, THREADS_CONTENT_TYPES } from "@/lib/channels";
+import {
+  NAVER_CATEGORIES,
+  NAVER_CATEGORY_MARKER_RE,
+} from "@/lib/naver-categories";
 import { stripMarkdown } from "@/lib/text";
 import {
   META_DELIMITER,
@@ -25,6 +29,7 @@ export function GenerateView() {
     () => searchParams.get("channel") ?? "",
   );
   const [contentType, setContentType] = useState<string>("auto");
+  const [naverCategory, setNaverCategory] = useState<string>("auto");
   const [topic, setTopic] = useState(() => searchParams.get("title") ?? "");
   const [extra, setExtra] = useState("");
 
@@ -73,6 +78,7 @@ export function GenerateView() {
           topic,
           extraInstructions: extra,
           planId: planId ?? null,
+          naverCategory: isNaver ? naverCategory : null,
         }),
       });
 
@@ -95,7 +101,10 @@ export function GenerateView() {
 
       const idx = buffer.indexOf(META_DELIMITER);
       if (idx !== -1) {
-        setBody(buffer.slice(0, idx));
+        // 서버가 DB 저장분에서 카테고리 마커를 제거하므로 화면 표시분도 동일하게 제거
+        setBody(
+          buffer.slice(0, idx).replace(NAVER_CATEGORY_MARKER_RE, "").trimEnd(),
+        );
         try {
           const m = JSON.parse(
             buffer.slice(idx + META_DELIMITER.length),
@@ -196,6 +205,36 @@ export function GenerateView() {
             </div>
           )}
 
+          {/* 네이버 블로그 카테고리 선택 */}
+          {isNaver && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-ink">
+                블로그 카테고리
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <TypeChip
+                  active={naverCategory === "auto"}
+                  label="자동 판정"
+                  onClick={() => setNaverCategory("auto")}
+                />
+                {NAVER_CATEGORIES.filter((c) => c.aiWritable).map((c) => (
+                  <TypeChip
+                    key={c.key}
+                    active={naverCategory === c.key}
+                    label={c.label}
+                    onClick={() => setNaverCategory(c.key)}
+                  />
+                ))}
+              </div>
+              <p className="text-xs text-muted">
+                카테고리 특성에 맞는 각도로 작성됩니다. &lsquo;옵티파이
+                안내&rsquo;는 대표 직접 작성 영역이라 제외되어 있습니다.
+                {naverCategory === "industry" &&
+                  " · 업종별 마케팅 글은 발행 전 대표 승인이 필요합니다."}
+              </p>
+            </div>
+          )}
+
           {/* 입력 */}
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -228,14 +267,26 @@ export function GenerateView() {
 
           {/* 결과 */}
           {naverReady ? (
-            <NaverResult
-              key={meta?.contentId ?? "naver"}
-              clientId={selectedClientId}
-              planId={planId}
-              contentId={meta?.contentId ?? null}
-              title={topic.trim().slice(0, 120)}
-              body={body}
-            />
+            <div className="space-y-3">
+              {meta?.naverCategory && (
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-tint px-3 py-1.5 text-sm font-semibold text-accent-deep">
+                    📁 카테고리 - {meta.naverCategory}
+                  </span>
+                  <span className="text-xs text-muted">
+                    네이버 블로그에서 이 카테고리에 등록하세요.
+                  </span>
+                </div>
+              )}
+              <NaverResult
+                key={meta?.contentId ?? "naver"}
+                clientId={selectedClientId}
+                planId={planId}
+                contentId={meta?.contentId ?? null}
+                title={topic.trim().slice(0, 120)}
+                body={body}
+              />
+            </div>
           ) : (
             (body || status !== "idle") && (
               <div className="space-y-3">
