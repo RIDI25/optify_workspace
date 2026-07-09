@@ -70,6 +70,7 @@ export interface ContentPlan extends Timestamps {
   scheduled_date: string | null;
   assignee: string | null;
   memo: string | null;
+  external_url: string | null;
 }
 
 export interface ContentImage {

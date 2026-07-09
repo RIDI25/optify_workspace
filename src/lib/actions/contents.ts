@@ -1,7 +1,12 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { ContentImage, ContentMeta } from "@/types/database";
+import type {
+  ContentImage,
+  ContentMeta,
+  ContentPlan,
+  PlanStatus,
+} from "@/types/database";
 
 /**
  * 콘텐츠 자산 저장. body/images는 항상 반영, meta는 best-effort
@@ -206,4 +211,75 @@ export async function sendToPlan(
   }
 
   return { ok: true, planId: plan.id };
+}
+
+interface ExternalPostInput {
+  clientId: string;
+  title: string;
+  url: string;
+  channel: string;
+  status: PlanStatus;
+  scheduledDate?: string | null; // 'YYYY-MM-DD' 또는 null
+  memo?: string | null;
+}
+
+/**
+ * 생성 엔진을 거치지 않고 따로 작성한 글을 제목+링크로 플랜에 등록.
+ * 채널 기본 담당자를 자동 배정. external_url 컬럼은 마이그레이션 0012 필요.
+ */
+export async function addExternalPost(
+  input: ExternalPostInput,
+): Promise<{ ok: boolean; plan?: ContentPlan; error?: string }> {
+  const supabase = await createClient();
+
+  const title = input.title.trim();
+  const url = input.url.trim();
+  if (!title) return { ok: false, error: "제목을 입력하세요." };
+  if (!/^https?:\/\//i.test(url)) {
+    return { ok: false, error: "링크는 http:// 또는 https://로 시작해야 합니다." };
+  }
+
+  const { data: cs } = await supabase
+    .from("channel_settings")
+    .select("default_assignee")
+    .eq("client_id", input.clientId)
+    .eq("channel", input.channel)
+    .single();
+
+  const { data: plan, error } = await supabase
+    .from("content_plans")
+    .insert({
+      client_id: input.clientId,
+      title,
+      channel: input.channel,
+      status: input.status,
+      scheduled_date: input.scheduledDate || null,
+      assignee: cs?.default_assignee ?? null,
+      memo: input.memo?.trim() || null,
+      external_url: url,
+    })
+    .select("*")
+    .single();
+
+  if (error || !plan) {
+    return { ok: false, error: error?.message ?? "플랜 생성 실패" };
+  }
+  return { ok: true, plan: plan as ContentPlan };
+}
+
+/** 플랜의 외부 글 링크 추가/수정/제거 (null이면 제거). */
+export async function updatePlanExternalUrl(
+  planId: string,
+  url: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const trimmed = url?.trim() || null;
+  if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+    return { ok: false, error: "링크는 http:// 또는 https://로 시작해야 합니다." };
+  }
+  const { error } = await supabase
+    .from("content_plans")
+    .update({ external_url: trimmed })
+    .eq("id", planId);
+  return error ? { ok: false, error: error.message } : { ok: true };
 }

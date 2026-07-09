@@ -10,7 +10,12 @@ import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { CHANNELS, getChannel, channelLabel } from "@/lib/channels";
 import { PLAN_STATUSES, planStatusLabel } from "@/lib/plan-status";
-import { deletePlan, approveContent } from "@/lib/actions/contents";
+import {
+  deletePlan,
+  approveContent,
+  addExternalPost,
+  updatePlanExternalUrl,
+} from "@/lib/actions/contents";
 import {
   ApprovalBadge,
   CommentThread,
@@ -62,6 +67,11 @@ export function PlansView() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectText, setRejectText] = useState("");
   const [approvalMsg, setApprovalMsg] = useState("");
+  const [extOpen, setExtOpen] = useState(false);
+  // 상세 패널의 링크 추가/수정 인라인 편집
+  const [urlEditing, setUrlEditing] = useState(false);
+  const [urlDraft, setUrlDraft] = useState("");
+  const [urlMsg, setUrlMsg] = useState("");
 
   useEffect(() => {
     const supabase = createClient();
@@ -158,6 +168,25 @@ export function PlansView() {
     setRejectOpen(false);
     setRejectText("");
     setApprovalMsg("");
+    setUrlEditing(false);
+    setUrlDraft("");
+    setUrlMsg("");
+  }
+
+  async function saveExternalUrl() {
+    if (!selected) return;
+    const next = urlDraft.trim() || null;
+    const r = await updatePlanExternalUrl(selected.id, next);
+    if (!r.ok) {
+      setUrlMsg(r.error ?? "저장 실패");
+      return;
+    }
+    setPlans((prev) =>
+      prev.map((p) => (p.id === selected.id ? { ...p, external_url: next } : p)),
+    );
+    setSelected((prev) => (prev ? { ...prev, external_url: next } : prev));
+    setUrlEditing(false);
+    setUrlMsg("");
   }
 
   async function decideContent(
@@ -228,19 +257,27 @@ export function PlansView() {
           <h1 className="text-xl font-bold text-ink">콘텐츠 플랜</h1>
           <p className="mt-1 text-sm text-muted">{selectedClient?.name}</p>
         </div>
-        <div className="flex rounded-md border border-border">
-          {(["calendar", "list"] as View[]).map((v) => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={[
-                "px-3 py-1.5 text-sm font-medium",
-                view === v ? "bg-tint text-accent-deep" : "text-muted",
-              ].join(" ")}
-            >
-              {v === "calendar" ? "캘린더" : "리스트"}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setExtOpen(true)}
+            className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-subtle"
+          >
+            + 외부 글 추가
+          </button>
+          <div className="flex rounded-md border border-border">
+            {(["calendar", "list"] as View[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={[
+                  "px-3 py-1.5 text-sm font-medium",
+                  view === v ? "bg-tint text-accent-deep" : "text-muted",
+                ].join(" ")}
+              >
+                {v === "calendar" ? "캘린더" : "리스트"}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -338,6 +375,11 @@ export function PlansView() {
                       >
                         <td className="px-3 py-2 font-medium text-ink">
                           {p.title}
+                          {p.external_url && (
+                            <span className="ml-1 text-xs" title="외부 작성 글">
+                              🔗
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-muted">
                           {channelLabel(p.channel)}
@@ -406,6 +448,59 @@ export function PlansView() {
                   {selected.memo}
                 </p>
               )}
+
+              {/* 외부 작성 글 링크 */}
+              <div className="space-y-1.5">
+                {selected.external_url && !urlEditing && (
+                  <a
+                    href={selected.external_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block truncate rounded-md bg-tint px-3 py-2 text-sm font-medium text-accent-deep hover:underline"
+                    title={selected.external_url}
+                  >
+                    🔗 작성한 글 보기
+                  </a>
+                )}
+                {urlEditing ? (
+                  <div className="space-y-1">
+                    <input
+                      value={urlDraft}
+                      onChange={(e) => setUrlDraft(e.target.value)}
+                      placeholder="https://…"
+                      className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs outline-none focus:border-accent-deep"
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={saveExternalUrl}
+                        className="rounded-md bg-accent-deep px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90"
+                      >
+                        저장
+                      </button>
+                      <button
+                        onClick={() => {
+                          setUrlEditing(false);
+                          setUrlMsg("");
+                        }}
+                        className="rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-subtle"
+                      >
+                        취소
+                      </button>
+                    </div>
+                    {urlMsg && <p className="text-xs text-red-600">{urlMsg}</p>}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setUrlDraft(selected.external_url ?? "");
+                      setUrlEditing(true);
+                    }}
+                    className="text-xs text-muted hover:text-accent-deep hover:underline"
+                  >
+                    {selected.external_url ? "링크 수정" : "+ 글 링크 추가"}
+                  </button>
+                )}
+              </div>
               {(() => {
                 const linkedKeyword = selected.keyword_id
                   ? keywords[selected.keyword_id]
@@ -555,6 +650,19 @@ export function PlansView() {
         </div>
       </div>
 
+      {/* 외부 작성 글 추가 모달 */}
+      {extOpen && (
+        <ExternalPostModal
+          clientId={selectedClientId}
+          onClose={() => setExtOpen(false)}
+          onCreated={(plan) => {
+            setPlans((prev) => [plan, ...prev]);
+            setExtOpen(false);
+            choose(plan);
+          }}
+        />
+      )}
+
       {/* 반려 사유 모달 [Fix 2] */}
       {rejectOpen && selected && contentsByPlan[selected.id]?.[0] && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
@@ -590,6 +698,125 @@ export function PlansView() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 생성 엔진 밖에서 따로 작성·발행한 글을 제목+링크로 플랜에 등록하는 모달 */
+function ExternalPostModal({
+  clientId,
+  onClose,
+  onCreated,
+}: {
+  clientId: string;
+  onClose: () => void;
+  onCreated: (plan: ContentPlan) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [url, setUrl] = useState("");
+  const [channel, setChannel] = useState(CHANNELS[0]?.key ?? "");
+  const [status, setStatus] = useState("published");
+  const [date, setDate] = useState("");
+  const [memo, setMemo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    setMsg("");
+    const r = await addExternalPost({
+      clientId,
+      title,
+      url,
+      channel,
+      status: status as ContentPlan["status"],
+      scheduledDate: date || null,
+      memo: memo || null,
+    });
+    setSaving(false);
+    if (!r.ok || !r.plan) {
+      setMsg(r.error ?? "저장 실패");
+      return;
+    }
+    onCreated(r.plan);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="w-full max-w-sm space-y-3 rounded-xl border border-border bg-surface p-5 shadow-lg">
+        <h3 className="text-base font-bold text-ink">외부 작성 글 추가</h3>
+        <p className="text-xs text-muted">
+          따로 작성한 글의 제목과 링크를 플랜에 등록합니다.
+        </p>
+        <div className="space-y-2 text-sm">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="글 제목 *"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 outline-none focus:border-accent-deep"
+          />
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="글 링크 (https://…) *"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 outline-none focus:border-accent-deep"
+          />
+          <div className="flex gap-2">
+            <select
+              value={channel}
+              onChange={(e) => setChannel(e.target.value)}
+              className="flex-1 rounded-md border border-border bg-surface px-2 py-2"
+            >
+              {CHANNELS.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="flex-1 rounded-md border border-border bg-surface px-2 py-2"
+            >
+              {PLAN_STATUSES.map((s) => (
+                <option key={s.key} value={s.key}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs"
+          />
+          <textarea
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            rows={2}
+            placeholder="메모 (선택)"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 outline-none focus:border-accent-deep"
+          />
+        </div>
+        {msg && <p className="text-xs text-red-600">{msg}</p>}
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
+          >
+            취소
+          </button>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="rounded-md bg-accent-deep px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? "저장 중…" : "추가"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
