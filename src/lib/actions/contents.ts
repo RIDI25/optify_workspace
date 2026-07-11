@@ -71,9 +71,60 @@ export async function setPublishedStatus(
     .from("contents")
     .update({ published_at: publishedAt })
     .eq("id", contentId);
-  return error
-    ? { ok: false, publishedAt: null, error: error.message }
-    : { ok: true, publishedAt };
+  if (error) return { ok: false, publishedAt: null, error: error.message };
+
+  // 연결된 플랜 상태 동기화 — 캘린더·플랜 목록에 발행 완료가 반영되도록
+  const { data: c } = await supabase
+    .from("contents")
+    .select("plan_id")
+    .eq("id", contentId)
+    .single();
+  if (c?.plan_id) {
+    await supabase
+      .from("content_plans")
+      .update({ status: published ? "published" : "review" })
+      .eq("id", c.plan_id);
+  }
+  return { ok: true, publishedAt };
+}
+
+/**
+ * 플랜 단위 발행 완료 표시/해제 (캘린더 날짜 패널용).
+ * 연결된 최신 콘텐츠의 published_at도 함께 동기화한다.
+ * 해제 시: 콘텐츠가 있으면 review, 글감뿐이면 idea로 되돌린다.
+ */
+export async function markPlanPublished(
+  planId: string,
+  published: boolean,
+): Promise<{ ok: boolean; status?: PlanStatus; error?: string }> {
+  const supabase = await createClient();
+
+  const { data: latest } = await supabase
+    .from("contents")
+    .select("id")
+    .eq("plan_id", planId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const status: PlanStatus = published
+    ? "published"
+    : latest
+      ? "review"
+      : "idea";
+  const { error } = await supabase
+    .from("content_plans")
+    .update({ status })
+    .eq("id", planId);
+  if (error) return { ok: false, error: error.message };
+
+  if (latest) {
+    await supabase
+      .from("contents")
+      .update({ published_at: published ? new Date().toISOString() : null })
+      .eq("id", latest.id);
+  }
+  return { ok: true, status };
 }
 
 /**
@@ -211,6 +262,69 @@ export async function sendToPlan(
   }
 
   return { ok: true, planId: plan.id };
+}
+
+interface CompleteContentInput {
+  clientId: string;
+  channel: string;
+  title: string;
+  contentId: string | null;
+  /** 이미 플랜에서 생성한 경우 그 플랜을 갱신, 없으면 새 플랜 생성 */
+  planId?: string | null;
+  /** 발행(예정)일 'YYYY-MM-DD' */
+  scheduledDate?: string | null;
+  /** true=발행 완료, false=대기중(review) */
+  publish: boolean;
+}
+
+/**
+ * 생성 완료 처리 — 날짜와 발행 상태를 지정해 플랜에 반영한다.
+ * 발행 완료 선택 시 콘텐츠 published_at도 함께 기록해 리포트 집계와 일치시킨다.
+ */
+export async function completeContent(
+  input: CompleteContentInput,
+): Promise<{ ok: boolean; planId?: string; error?: string }> {
+  const supabase = await createClient();
+  const status: PlanStatus = input.publish ? "published" : "review";
+
+  let planId = input.planId ?? null;
+  if (planId) {
+    const { error } = await supabase
+      .from("content_plans")
+      .update({ status, scheduled_date: input.scheduledDate || null })
+      .eq("id", planId);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { data: cs } = await supabase
+      .from("channel_settings")
+      .select("default_assignee")
+      .eq("client_id", input.clientId)
+      .eq("channel", input.channel)
+      .single();
+    const { data: plan, error } = await supabase
+      .from("content_plans")
+      .insert({
+        client_id: input.clientId,
+        title: input.title || "(제목 없음)",
+        channel: input.channel,
+        status,
+        scheduled_date: input.scheduledDate || null,
+        assignee: cs?.default_assignee ?? null,
+      })
+      .select("id")
+      .single();
+    if (error || !plan) {
+      return { ok: false, error: error?.message ?? "플랜 생성 실패" };
+    }
+    planId = plan.id;
+  }
+
+  if (input.contentId) {
+    const patch: Record<string, unknown> = { plan_id: planId };
+    if (input.publish) patch.published_at = new Date().toISOString();
+    await supabase.from("contents").update(patch).eq("id", input.contentId);
+  }
+  return { ok: true, planId: planId ?? undefined };
 }
 
 interface ExternalPostInput {

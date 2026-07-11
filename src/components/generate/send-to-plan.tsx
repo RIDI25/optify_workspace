@@ -2,8 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { sendToPlan } from "@/lib/actions/contents";
+import { completeContent } from "@/lib/actions/contents";
 
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * 생성 완료 처리 푸터.
+ * "생성 완료로 표시" → 날짜 지정 + 발행 완료/대기중 선택 → 플랜에 반영(생성 또는 갱신).
+ * 플랜에서 진입한 생성물(planId 존재)은 그 플랜을 갱신한다.
+ */
 export function SendToPlanFooter({
   clientId,
   channel,
@@ -18,49 +27,27 @@ export function SendToPlanFooter({
   planId: string | null;
 }) {
   const [open, setOpen] = useState(false);
-  const [date, setDate] = useState("");
-  const [status, setStatus] = useState<"idea" | "writing">("idea");
+  const [date, setDate] = useState(today());
+  const [publish, setPublish] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState(""); // 저장 실패 알림 [AUDIT M-5]
-
-  // 이미 플랜에서 진입한 생성물이면 되돌아가기만 제공
-  if (planId) {
-    return (
-      <Link
-        href="/plans"
-        className="block rounded-md border border-border px-3 py-2 text-center text-sm hover:bg-subtle"
-      >
-        플랜으로 돌아가기
-      </Link>
-    );
-  }
-
-  if (done) {
-    return (
-      <div className="rounded-md bg-tint px-3 py-2 text-center text-sm text-accent-deep">
-        플랜에 추가됨 ·{" "}
-        <Link href="/plans" className="underline">
-          플랜에서 보기
-        </Link>
-      </div>
-    );
-  }
+  const [done, setDone] = useState<"" | "published" | "pending">("");
+  const [error, setError] = useState("");
 
   async function save() {
     setBusy(true);
     setError("");
     try {
-      const res = await sendToPlan({
+      const res = await completeContent({
         clientId,
         channel,
         title,
         contentId,
+        planId,
         scheduledDate: date || null,
-        status,
+        publish,
       });
       if (res.ok) {
-        setDone(true);
+        setDone(publish ? "published" : "pending");
         setOpen(false);
       } else {
         setError(res.error ?? "저장에 실패했습니다.");
@@ -73,22 +60,44 @@ export function SendToPlanFooter({
   }
 
   return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="w-full rounded-md border border-accent-deep px-3 py-2 text-sm font-medium text-accent-deep hover:bg-tint"
-      >
-        콘텐츠 플랜으로 보내기
-      </button>
+    <div className="space-y-2">
+      {done ? (
+        <div className="rounded-md bg-tint px-3 py-2 text-center text-sm text-accent-deep">
+          {done === "published" ? "✓ 발행 완료로 기록됨" : "✓ 대기중으로 플랜에 반영됨"}{" "}
+          ·{" "}
+          <Link href="/plans" className="underline">
+            플랜에서 보기
+          </Link>
+        </div>
+      ) : (
+        <button
+          onClick={() => setOpen(true)}
+          className="w-full rounded-md border border-accent-deep px-3 py-2 text-sm font-medium text-accent-deep hover:bg-tint"
+        >
+          생성 완료로 표시
+        </button>
+      )}
+
+      {planId && (
+        <Link
+          href="/plans"
+          className="block rounded-md border border-border px-3 py-2 text-center text-sm hover:bg-subtle"
+        >
+          플랜으로 돌아가기
+        </Link>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-surface p-5 shadow-lg">
-            <h3 className="text-base font-bold text-ink">콘텐츠 플랜으로 보내기</h3>
+            <h3 className="text-base font-bold text-ink">생성 완료로 표시</h3>
+            <p className="text-xs text-muted">
+              날짜와 상태를 지정하면 콘텐츠 플랜과 캘린더에 반영됩니다.
+            </p>
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-ink">
-                예정일 (선택)
+                발행(예정)일
               </label>
               <input
                 type="date"
@@ -100,16 +109,35 @@ export function SendToPlanFooter({
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-ink">상태</label>
-              <select
-                value={status}
-                onChange={(e) =>
-                  setStatus(e.target.value as "idea" | "writing")
-                }
-                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-              >
-                <option value="idea">아이디어</option>
-                <option value="writing">작성 중</option>
-              </select>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPublish(true)}
+                  className={[
+                    "flex-1 rounded-md border px-3 py-2 text-sm font-medium",
+                    publish
+                      ? "border-accent-deep bg-tint text-accent-deep"
+                      : "border-border text-muted hover:bg-subtle",
+                  ].join(" ")}
+                >
+                  발행 완료
+                </button>
+                <button
+                  onClick={() => setPublish(false)}
+                  className={[
+                    "flex-1 rounded-md border px-3 py-2 text-sm font-medium",
+                    !publish
+                      ? "border-accent-deep bg-tint text-accent-deep"
+                      : "border-border text-muted hover:bg-subtle",
+                  ].join(" ")}
+                >
+                  대기중
+                </button>
+              </div>
+              <p className="text-xs text-muted">
+                {publish
+                  ? "이미 발행한 글 — 발행 집계에 포함됩니다."
+                  : "발행 예정 — 캘린더에 예정 콘텐츠로 표시됩니다."}
+              </p>
             </div>
 
             {error && (
@@ -136,6 +164,6 @@ export function SendToPlanFooter({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

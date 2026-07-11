@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
-import interactionPlugin from "@fullcalendar/interaction";
+import interactionPlugin, {
+  type DateClickArg,
+} from "@fullcalendar/interaction";
 import type { EventDropArg } from "@fullcalendar/core";
 import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
@@ -15,6 +17,7 @@ import {
   approveContent,
   addExternalPost,
   updatePlanExternalUrl,
+  markPlanPublished,
 } from "@/lib/actions/contents";
 import {
   ApprovalBadge,
@@ -24,6 +27,7 @@ import { stripMarkdown } from "@/lib/text";
 import type {
   ApprovalStatus,
   ContentPlan,
+  PlanStatus,
   Profile,
 } from "@/types/database";
 
@@ -68,6 +72,8 @@ export function PlansView() {
   const [rejectText, setRejectText] = useState("");
   const [approvalMsg, setApprovalMsg] = useState("");
   const [extOpen, setExtOpen] = useState(false);
+  // 캘린더 날짜칸 클릭 → 그 날짜의 콘텐츠·글감 패널
+  const [dayDate, setDayDate] = useState<string | null>(null);
   // 상세 패널의 링크 추가/수정 인라인 편집
   const [urlEditing, setUrlEditing] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
@@ -156,6 +162,7 @@ export function PlansView() {
           borderColor: getChannel(p.channel)?.color ?? "#057A4E",
           extendedProps: {
             approval: contentsByPlan[p.id]?.[0]?.approval_status ?? null,
+            published: p.status === "published",
           },
         })),
     [plans, contentsByPlan],
@@ -297,6 +304,7 @@ export function PlansView() {
                   const ap = arg.event.extendedProps.approval as
                     | ApprovalStatus
                     | null;
+                  const published = !!arg.event.extendedProps.published;
                   const dot =
                     ap === "approved"
                       ? "●"
@@ -306,8 +314,14 @@ export function PlansView() {
                           ? "○"
                           : "";
                   return (
-                    <div className="truncate px-1 text-xs text-white">
-                      {dot && <span className="mr-1">{dot}</span>}
+                    <div
+                      className={[
+                        "truncate px-1 text-xs text-white",
+                        published ? "opacity-70" : "",
+                      ].join(" ")}
+                    >
+                      {published && <span className="mr-1">✅</span>}
+                      {!published && dot && <span className="mr-1">{dot}</span>}
                       {arg.event.title}
                     </div>
                   );
@@ -316,6 +330,7 @@ export function PlansView() {
                   const p = plans.find((x) => x.id === info.event.id);
                   if (p) choose(p);
                 }}
+                dateClick={(arg: DateClickArg) => setDayDate(arg.dateStr)}
                 headerToolbar={{
                   left: "prev,next today",
                   center: "title",
@@ -650,6 +665,29 @@ export function PlansView() {
         </div>
       </div>
 
+      {/* 날짜칸 클릭 — 그 날짜의 콘텐츠·글감 패널 */}
+      {dayDate && (
+        <DayPanel
+          date={dayDate}
+          plans={plans.filter((p) => p.scheduled_date === dayDate)}
+          contentsByPlan={contentsByPlan}
+          keywords={keywords}
+          onClose={() => setDayDate(null)}
+          onDeleted={(planId) => {
+            setPlans((prev) => prev.filter((p) => p.id !== planId));
+            if (selected?.id === planId) choose(null);
+          }}
+          onStatusChanged={(planId, status) => {
+            setPlans((prev) =>
+              prev.map((p) => (p.id === planId ? { ...p, status } : p)),
+            );
+            setSelected((prev) =>
+              prev && prev.id === planId ? { ...prev, status } : prev,
+            );
+          }}
+        />
+      )}
+
       {/* 외부 작성 글 추가 모달 */}
       {extOpen && (
         <ExternalPostModal
@@ -698,6 +736,174 @@ export function PlansView() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 캘린더 날짜칸 클릭 시 그 날짜의 콘텐츠·글감 목록 + 글쓰기/발행/삭제 액션 패널 */
+function DayPanel({
+  date,
+  plans,
+  contentsByPlan,
+  keywords,
+  onClose,
+  onDeleted,
+  onStatusChanged,
+}: {
+  date: string;
+  plans: ContentPlan[];
+  contentsByPlan: Record<string, LinkedContent[]>;
+  keywords: Record<string, string>;
+  onClose: () => void;
+  onDeleted: (planId: string) => void;
+  onStatusChanged: (planId: string, status: PlanStatus) => void;
+}) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [msg, setMsg] = useState("");
+
+  async function togglePublish(plan: ContentPlan) {
+    setBusyId(plan.id);
+    setMsg("");
+    const next = plan.status !== "published";
+    const r = await markPlanPublished(plan.id, next);
+    setBusyId(null);
+    if (r.ok && r.status) {
+      onStatusChanged(plan.id, r.status);
+    } else {
+      setMsg(`실패: ${r.error ?? "알 수 없는 오류"}`);
+    }
+  }
+
+  async function remove(plan: ContentPlan) {
+    if (confirmId !== plan.id) {
+      setConfirmId(plan.id);
+      return;
+    }
+    setBusyId(plan.id);
+    const r = await deletePlan(plan.id);
+    setBusyId(null);
+    setConfirmId(null);
+    if (r.ok) onDeleted(plan.id);
+    else setMsg(`삭제 실패: ${r.error}`);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[80vh] w-full max-w-md space-y-3 overflow-y-auto rounded-xl border border-border bg-surface p-5 shadow-lg"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-ink">{date}</h3>
+          <button onClick={onClose} className="text-xs text-muted hover:text-ink">
+            닫기
+          </button>
+        </div>
+
+        {plans.length === 0 ? (
+          <p className="py-4 text-center text-sm text-muted">
+            이 날짜에 예정된 콘텐츠·글감이 없습니다.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {plans.map((p) => {
+              const linked = contentsByPlan[p.id]?.[0] ?? null;
+              const isDraftIdea = !linked; // 글감 (아직 생성물 없음)
+              const isPublished = p.status === "published";
+              const linkedKeyword = p.keyword_id
+                ? keywords[p.keyword_id]
+                : undefined;
+              const genHref =
+                `/generate?planId=${p.id}&channel=${p.channel}&title=${encodeURIComponent(p.title)}` +
+                (linkedKeyword
+                  ? `&keyword=${encodeURIComponent(linkedKeyword)}`
+                  : "");
+              return (
+                <li
+                  key={p.id}
+                  className="space-y-2 rounded-lg border border-border p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">
+                        {isPublished && <span className="mr-1">✅</span>}
+                        {p.title}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {channelLabel(p.channel)} · {planStatusLabel(p.status)}{" "}
+                        · {isDraftIdea ? "글감" : "생성 완료"}
+                      </p>
+                    </div>
+                    <span
+                      className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor:
+                          getChannel(p.channel)?.color ?? "#057A4E",
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {isDraftIdea && (
+                      <Link
+                        href={genHref}
+                        className="rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-ink hover:opacity-90"
+                      >
+                        글쓰기
+                      </Link>
+                    )}
+                    {linked && (
+                      <Link
+                        href={`/library?contentId=${linked.id}`}
+                        className="rounded-md border border-border px-2.5 py-1 text-xs text-ink hover:bg-subtle"
+                      >
+                        생성물 보기
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => togglePublish(p)}
+                      disabled={busyId === p.id}
+                      className={[
+                        "rounded-md border px-2.5 py-1 text-xs font-medium disabled:opacity-50",
+                        isPublished
+                          ? "border-accent-deep bg-tint text-accent-deep"
+                          : "border-border text-ink hover:bg-subtle",
+                      ].join(" ")}
+                    >
+                      {isPublished ? "✓ 발행됨 (해제)" : "발행 완료로 표시"}
+                    </button>
+                    <button
+                      onClick={() => remove(p)}
+                      disabled={busyId === p.id}
+                      className={[
+                        "rounded-md border px-2.5 py-1 text-xs disabled:opacity-50",
+                        confirmId === p.id
+                          ? "border-red-500 bg-red-50 font-medium text-red-600"
+                          : "border-border text-muted hover:bg-subtle",
+                      ].join(" ")}
+                    >
+                      {confirmId === p.id ? "정말 삭제? (다시 클릭)" : "삭제"}
+                    </button>
+                    {confirmId === p.id && (
+                      <button
+                        onClick={() => setConfirmId(null)}
+                        className="px-1.5 py-1 text-xs text-muted hover:text-ink"
+                      >
+                        취소
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {msg && <p className="text-xs text-red-600">{msg}</p>}
+      </div>
     </div>
   );
 }
