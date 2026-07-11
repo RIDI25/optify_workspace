@@ -14,7 +14,13 @@ interface WpJson {
   meta_description: string;
   slug: string;
   faq: { question: string; answer: string }[];
-  image_prompts: { prompt: string; alt_text: string; filename: string }[];
+  image_prompts: {
+    prompt: string;
+    /** 키워드·주제 기반 한국어 이미지 제목 (복사해 WP 미디어에 붙여넣기용) */
+    title?: string;
+    alt_text: string;
+    filename: string;
+  }[];
 }
 
 const MIN_CHARS = 3000;
