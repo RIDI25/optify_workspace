@@ -21,11 +21,20 @@ const CHANNEL_TAG_CLS: Record<string, string> = {
 };
 
 type Phase = "idle" | "collecting" | "generating";
+type Mode = "report" | "library";
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function dateWithWeekday(ymd: string): string {
+  const d = new Date(`${ymd}T00:00:00`);
+  return `${ymd} (${WEEKDAYS[d.getDay()]})`;
+}
 
 export function DailyReportView() {
   const { selectedClientId } = useClientContext();
   const today = ymdLocal(new Date());
 
+  const [mode, setMode] = useState<Mode>("report");
   const [viewDate, setViewDate] = useState(today);
   const [history, setHistory] = useState<string[]>([]);
   const [collected, setCollected] = useState<CollectResult | null>(null);
@@ -33,6 +42,11 @@ export function DailyReportView() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
+
+  // 라이브러리 (과거 리포트 아카이브)
+  const [libRows, setLibRows] = useState<DailyReportRow[]>([]);
+  const [libLoaded, setLibLoaded] = useState(false);
+  const [libSearch, setLibSearch] = useState("");
 
   // 소재 제안 → 플랜/보관함 연동
   const [channels, setChannels] = useState<ChannelSettings[]>([]);
@@ -84,6 +98,25 @@ export function DailyReportView() {
       );
   }, [report]);
 
+  // 라이브러리 진입 시 과거 리포트 로드 (최근 90건)
+  useEffect(() => {
+    if (mode !== "library" || libLoaded) return;
+    createClient()
+      .from("daily_reports")
+      .select("id, report_date, report, created_at")
+      .order("report_date", { ascending: false })
+      .limit(90)
+      .then(({ data }) => {
+        setLibRows((data ?? []) as DailyReportRow[]);
+        setLibLoaded(true);
+      });
+  }, [mode, libLoaded]);
+
+  function openFromLibrary(date: string) {
+    setViewDate(date);
+    setMode("report");
+  }
+
   async function generate() {
     setPhase("collecting");
     setError("");
@@ -112,6 +145,8 @@ export function DailyReportView() {
       setReport(g.report as DailyReportContent);
       if (g.warning) setWarning(g.warning);
       setViewDate(today);
+      setLibLoaded(false); // 라이브러리 목록 갱신 필요
+
     } catch (e) {
       setError(e instanceof Error ? e.message : "실패");
     } finally {
@@ -158,49 +193,87 @@ export function DailyReportView() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {history.length > 0 && (
-            <select
-              value={viewDate}
-              onChange={(e) => setViewDate(e.target.value)}
-              className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+          <div className="flex rounded-md border border-border">
+            <button
+              onClick={() => setMode("report")}
+              className={[
+                "px-3 py-1.5 text-sm font-medium",
+                mode === "report" ? "bg-tint text-accent-deep" : "text-muted",
+              ].join(" ")}
             >
-              {!history.includes(today) && <option value={today}>{today} (오늘)</option>}
-              {history.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                  {d === today ? " (오늘)" : ""}
-                </option>
-              ))}
-            </select>
+              리포트
+            </button>
+            <button
+              onClick={() => setMode("library")}
+              className={[
+                "px-3 py-1.5 text-sm font-medium",
+                mode === "library" ? "bg-tint text-accent-deep" : "text-muted",
+              ].join(" ")}
+            >
+              📚 라이브러리
+            </button>
+          </div>
+          {mode === "report" && (
+            <>
+              {history.length > 0 && (
+                <select
+                  value={viewDate}
+                  onChange={(e) => setViewDate(e.target.value)}
+                  className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+                >
+                  {!history.includes(today) && (
+                    <option value={today}>{today} (오늘)</option>
+                  )}
+                  {history.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                      {d === today ? " (오늘)" : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={generate}
+                disabled={busy}
+                className="rounded-md bg-accent-deep px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {phase === "collecting"
+                  ? "소식 수집 중… (1/2)"
+                  : phase === "generating"
+                    ? "리포트 작성 중… (2/2)"
+                    : isToday && report
+                      ? "🔄 다시 생성"
+                      : "☕ 오늘 리포트 생성"}
+              </button>
+            </>
           )}
-          <button
-            onClick={generate}
-            disabled={busy}
-            className="rounded-md bg-accent-deep px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-          >
-            {phase === "collecting"
-              ? "소식 수집 중… (1/2)"
-              : phase === "generating"
-                ? "리포트 작성 중… (2/2)"
-                : isToday && report
-                  ? "🔄 다시 생성"
-                  : "☕ 오늘 리포트 생성"}
-          </button>
         </div>
       </div>
 
-      {error && (
+      {/* 📚 라이브러리 — 과거 리포트 아카이브 */}
+      {mode === "library" && (
+        <ReportLibrary
+          rows={libRows}
+          loaded={libLoaded}
+          search={libSearch}
+          onSearch={setLibSearch}
+          today={today}
+          onOpen={openFromLibrary}
+        />
+      )}
+
+      {mode === "report" && error && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
           {error}
         </p>
       )}
-      {warning && (
+      {mode === "report" && warning && (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
           ⚠️ {warning}
         </p>
       )}
 
-      {!report && !busy && (
+      {mode === "report" && !report && !busy && (
         <div className="rounded-xl border border-border bg-surface p-8 text-center">
           <p className="text-sm text-muted">
             {isToday
@@ -211,7 +284,7 @@ export function DailyReportView() {
       )}
 
       {/* 수집 현황 */}
-      {collected && (
+      {mode === "report" && collected && (
         <div className="space-y-2 rounded-xl border border-border bg-surface p-3">
           <p className="text-xs font-semibold text-ink">
             수집 현황 — 최근 {collected.windowHours}시간 · 총{" "}
@@ -248,7 +321,7 @@ export function DailyReportView() {
         </div>
       )}
 
-      {report && (
+      {mode === "report" && report && (
         <>
           {/* ① 헤드라인 */}
           <section className="rounded-xl border border-accent-deep/30 bg-tint/40 p-4">
@@ -380,6 +453,112 @@ export function DailyReportView() {
               </ul>
             </section>
           )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** 과거 데일리 리포트 아카이브 — 검색 + 날짜별 카드 */
+function ReportLibrary({
+  rows,
+  loaded,
+  search,
+  onSearch,
+  today,
+  onOpen,
+}: {
+  rows: DailyReportRow[];
+  loaded: boolean;
+  search: string;
+  onSearch: (v: string) => void;
+  today: string;
+  onOpen: (date: string) => void;
+}) {
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? rows.filter((r) => {
+        const rep = r.report;
+        if (!rep) return false;
+        const haystack = [
+          ...rep.headlines,
+          ...rep.stories.flatMap((s) => [s.title, s.what, s.impact, s.angle]),
+          ...rep.suggestions.flatMap((s) => [s.title, s.keyword]),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(q) || r.report_date.includes(q);
+      })
+    : rows;
+
+  return (
+    <div className="space-y-3">
+      <input
+        value={search}
+        onChange={(e) => onSearch(e.target.value)}
+        placeholder="🔍 헤드라인·소식·키워드 검색 (예: GEO, 챗GPT, 알고리즘)"
+        className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
+      />
+
+      {!loaded ? (
+        <p className="py-8 text-center text-sm text-muted">불러오는 중…</p>
+      ) : filtered.length === 0 ? (
+        <p className="rounded-xl border border-border bg-surface py-8 text-center text-sm text-muted">
+          {q ? "검색 결과가 없습니다." : "저장된 리포트가 없습니다."}
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-muted">
+            총 {filtered.length}건{q && ` (전체 ${rows.length}건 중)`}
+          </p>
+          <ul className="space-y-3">
+            {filtered.map((r) => {
+              const rep = r.report;
+              return (
+                <li
+                  key={r.id}
+                  onClick={() => onOpen(r.report_date)}
+                  className="cursor-pointer space-y-2 rounded-xl border border-border bg-surface p-4 transition-colors hover:border-accent-deep"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-bold text-ink">
+                      ☕ {dateWithWeekday(r.report_date)}
+                      {r.report_date === today && (
+                        <span className="ml-1.5 rounded-full bg-tint px-2 py-0.5 text-[11px] font-medium text-accent-deep">
+                          오늘
+                        </span>
+                      )}
+                    </p>
+                    {rep && (
+                      <p className="text-[11px] text-muted">
+                        소식 {rep.stories.length}건 · 소재{" "}
+                        {rep.suggestions.length}건
+                      </p>
+                    )}
+                  </div>
+                  {rep ? (
+                    <ol className="space-y-1">
+                      {rep.headlines.slice(0, 3).map((h, i) => (
+                        <li
+                          key={i}
+                          className="flex gap-1.5 text-xs text-muted"
+                        >
+                          <span className="font-mono text-accent-deep">
+                            {i + 1}.
+                          </span>
+                          <span className="line-clamp-1">{h}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-xs text-muted">
+                      리포트 없음 (수집만 저장됨)
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </>
       )}
     </div>
