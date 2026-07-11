@@ -148,10 +148,36 @@ function ImageCard({ img }: { img: ContentImage }) {
   );
 }
 
-function PanelRow({ label, value }: { label: string; value: string }) {
+function PanelRow({
+  label,
+  value,
+  copyValue,
+}: {
+  label: string;
+  value: string;
+  /** 지정 시 복사 버튼 노출 — 표시값과 다른 원본값을 복사할 때 사용 */
+  copyValue?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    if (!copyValue) return;
+    await navigator.clipboard.writeText(copyValue);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
   return (
     <div>
-      <p className="mb-0.5 text-xs font-medium text-muted">{label}</p>
+      <div className="mb-0.5 flex items-center justify-between">
+        <p className="text-xs font-medium text-muted">{label}</p>
+        {copyValue && (
+          <button
+            onClick={copy}
+            className="rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted hover:bg-subtle"
+          >
+            {copied ? "복사됨" : "복사"}
+          </button>
+        )}
+      </div>
       <p className="break-all rounded-md bg-subtle px-2.5 py-1.5 text-sm text-ink">
         {value || "-"}
       </p>
@@ -385,8 +411,18 @@ export function ContentResultView(props: ContentResultData) {
         {isWp && (
           <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
             <h3 className="text-sm font-semibold text-ink">SEO 정보</h3>
-            <PanelRow label="슬러그" value={meta?.slug ? `/${meta.slug}` : "-"} />
-            <PanelRow label="메타 디스크립션" value={meta?.meta_description ?? "-"} />
+            <PanelRow
+              label="슬러그"
+              value={meta?.slug ? `/${meta.slug}` : "-"}
+              copyValue={
+                meta?.slug ? meta.slug.replace(/\//g, "") : undefined
+              }
+            />
+            <PanelRow
+              label="메타 디스크립션"
+              value={meta?.meta_description ?? "-"}
+              copyValue={meta?.meta_description || undefined}
+            />
             <PanelRow label="FAQ" value={`${meta?.faq?.length ?? 0}개`} />
             <PanelRow label="이미지" value={`${images.length}장`} />
             <PanelRow label="글자 수" value={`${charCount.toLocaleString()}자`} />

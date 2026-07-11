@@ -72,6 +72,7 @@ export function PlansView() {
   const [rejectText, setRejectText] = useState("");
   const [approvalMsg, setApprovalMsg] = useState("");
   const [extOpen, setExtOpen] = useState(false);
+  const [extDefaultDate, setExtDefaultDate] = useState<string | null>(null);
   // 캘린더 날짜칸 클릭 → 그 날짜의 콘텐츠·글감 패널
   const [dayDate, setDayDate] = useState<string | null>(null);
   // 상세 패널의 링크 추가/수정 인라인 편집
@@ -266,10 +267,13 @@ export function PlansView() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setExtOpen(true)}
-            className="rounded-md border border-border px-3 py-1.5 text-sm font-medium text-ink hover:bg-subtle"
+            onClick={() => {
+              setExtDefaultDate(null);
+              setExtOpen(true);
+            }}
+            className="rounded-md border border-accent-deep px-3 py-1.5 text-sm font-medium text-accent-deep hover:bg-tint"
           >
-            + 외부 글 추가
+            + 외부 글 추가 (제목·링크)
           </button>
           <div className="flex rounded-md border border-border">
             {(["calendar", "list"] as View[]).map((v) => (
@@ -685,6 +689,11 @@ export function PlansView() {
               prev && prev.id === planId ? { ...prev, status } : prev,
             );
           }}
+          onAddExternal={() => {
+            setExtDefaultDate(dayDate);
+            setDayDate(null);
+            setExtOpen(true);
+          }}
         />
       )}
 
@@ -692,6 +701,7 @@ export function PlansView() {
       {extOpen && (
         <ExternalPostModal
           clientId={selectedClientId}
+          defaultDate={extDefaultDate}
           onClose={() => setExtOpen(false)}
           onCreated={(plan) => {
             setPlans((prev) => [plan, ...prev]);
@@ -749,6 +759,7 @@ function DayPanel({
   onClose,
   onDeleted,
   onStatusChanged,
+  onAddExternal,
 }: {
   date: string;
   plans: ContentPlan[];
@@ -757,22 +768,27 @@ function DayPanel({
   onClose: () => void;
   onDeleted: (planId: string) => void;
   onStatusChanged: (planId: string, status: PlanStatus) => void;
+  onAddExternal: () => void;
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
 
-  async function togglePublish(plan: ContentPlan) {
+  const contents = plans.filter(
+    (p) => contentsByPlan[p.id]?.[0] || p.external_url,
+  );
+  const drafts = plans.filter(
+    (p) => !contentsByPlan[p.id]?.[0] && !p.external_url,
+  );
+
+  async function setPublished(plan: ContentPlan, publish: boolean) {
+    if (publish === (plan.status === "published")) return;
     setBusyId(plan.id);
     setMsg("");
-    const next = plan.status !== "published";
-    const r = await markPlanPublished(plan.id, next);
+    const r = await markPlanPublished(plan.id, publish);
     setBusyId(null);
-    if (r.ok && r.status) {
-      onStatusChanged(plan.id, r.status);
-    } else {
-      setMsg(`실패: ${r.error ?? "알 수 없는 오류"}`);
-    }
+    if (r.ok && r.status) onStatusChanged(plan.id, r.status);
+    else setMsg(`실패: ${r.error ?? "알 수 없는 오류"}`);
   }
 
   async function remove(plan: ContentPlan) {
@@ -788,121 +804,174 @@ function DayPanel({
     else setMsg(`삭제 실패: ${r.error}`);
   }
 
+  function renderItem(p: ContentPlan, isDraft: boolean) {
+    const linked = contentsByPlan[p.id]?.[0] ?? null;
+    const isPublished = p.status === "published";
+    const linkedKeyword = p.keyword_id ? keywords[p.keyword_id] : undefined;
+    const genHref =
+      `/generate?planId=${p.id}&channel=${p.channel}&title=${encodeURIComponent(p.title)}` +
+      (linkedKeyword ? `&keyword=${encodeURIComponent(linkedKeyword)}` : "");
+    return (
+      <li
+        key={p.id}
+        className="space-y-2.5 rounded-lg border border-border bg-surface p-3"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-ink">
+              {p.title}
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
+                style={{
+                  backgroundColor: getChannel(p.channel)?.color ?? "#057A4E",
+                }}
+              >
+                {channelLabel(p.channel)}
+              </span>
+              <span
+                className={[
+                  "rounded-full px-2 py-0.5 text-[11px] font-medium",
+                  isPublished
+                    ? "bg-tint text-accent-deep"
+                    : "bg-subtle text-muted",
+                ].join(" ")}
+              >
+                {isPublished ? "✅ 발행됨" : `⏳ ${planStatusLabel(p.status)}`}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {isDraft && (
+            <Link
+              href={genHref}
+              className="rounded-md bg-accent px-3 py-1.5 text-xs font-bold text-ink hover:opacity-90"
+            >
+              ✍️ 글쓰기
+            </Link>
+          )}
+          {linked && (
+            <Link
+              href={`/library?contentId=${linked.id}`}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-ink hover:bg-subtle"
+            >
+              생성물 보기
+            </Link>
+          )}
+          {p.external_url && (
+            <a
+              href={p.external_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-ink hover:bg-subtle"
+            >
+              🔗 글 보기
+            </a>
+          )}
+          <div className="flex overflow-hidden rounded-md border border-border">
+            <button
+              onClick={() => setPublished(p, true)}
+              disabled={busyId === p.id}
+              className={[
+                "px-3 py-1.5 text-xs font-medium disabled:opacity-50",
+                isPublished
+                  ? "bg-accent-deep text-white"
+                  : "text-muted hover:bg-subtle",
+              ].join(" ")}
+            >
+              발행 완료
+            </button>
+            <button
+              onClick={() => setPublished(p, false)}
+              disabled={busyId === p.id}
+              className={[
+                "border-l border-border px-3 py-1.5 text-xs font-medium disabled:opacity-50",
+                !isPublished
+                  ? "bg-ink text-white"
+                  : "text-muted hover:bg-subtle",
+              ].join(" ")}
+            >
+              대기중
+            </button>
+          </div>
+          <button
+            onClick={() => remove(p)}
+            disabled={busyId === p.id}
+            className={[
+              "ml-auto rounded-md border px-3 py-1.5 text-xs disabled:opacity-50",
+              confirmId === p.id
+                ? "border-red-500 bg-red-50 font-medium text-red-600"
+                : "border-border text-muted hover:bg-subtle",
+            ].join(" ")}
+          >
+            {confirmId === p.id ? "정말 삭제?" : "삭제"}
+          </button>
+          {confirmId === p.id && (
+            <button
+              onClick={() => setConfirmId(null)}
+              className="px-1 py-1 text-xs text-muted hover:text-ink"
+            >
+              취소
+            </button>
+          )}
+        </div>
+      </li>
+    );
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
       onClick={onClose}
     >
       <div
-        className="max-h-[80vh] w-full max-w-md space-y-3 overflow-y-auto rounded-xl border border-border bg-surface p-5 shadow-lg"
+        className="max-h-[80vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-xl border border-border bg-surface p-5 shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold text-ink">{date}</h3>
+          <h3 className="text-base font-bold text-ink">📅 {date}</h3>
           <button onClick={onClose} className="text-xs text-muted hover:text-ink">
-            닫기
+            닫기 ✕
           </button>
         </div>
 
-        {plans.length === 0 ? (
+        {plans.length === 0 && (
           <p className="py-4 text-center text-sm text-muted">
             이 날짜에 예정된 콘텐츠·글감이 없습니다.
           </p>
-        ) : (
-          <ul className="space-y-3">
-            {plans.map((p) => {
-              const linked = contentsByPlan[p.id]?.[0] ?? null;
-              const isDraftIdea = !linked; // 글감 (아직 생성물 없음)
-              const isPublished = p.status === "published";
-              const linkedKeyword = p.keyword_id
-                ? keywords[p.keyword_id]
-                : undefined;
-              const genHref =
-                `/generate?planId=${p.id}&channel=${p.channel}&title=${encodeURIComponent(p.title)}` +
-                (linkedKeyword
-                  ? `&keyword=${encodeURIComponent(linkedKeyword)}`
-                  : "");
-              return (
-                <li
-                  key={p.id}
-                  className="space-y-2 rounded-lg border border-border p-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-ink">
-                        {isPublished && <span className="mr-1">✅</span>}
-                        {p.title}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted">
-                        {channelLabel(p.channel)} · {planStatusLabel(p.status)}{" "}
-                        · {isDraftIdea ? "글감" : "생성 완료"}
-                      </p>
-                    </div>
-                    <span
-                      className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor:
-                          getChannel(p.channel)?.color ?? "#057A4E",
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {isDraftIdea && (
-                      <Link
-                        href={genHref}
-                        className="rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-ink hover:opacity-90"
-                      >
-                        글쓰기
-                      </Link>
-                    )}
-                    {linked && (
-                      <Link
-                        href={`/library?contentId=${linked.id}`}
-                        className="rounded-md border border-border px-2.5 py-1 text-xs text-ink hover:bg-subtle"
-                      >
-                        생성물 보기
-                      </Link>
-                    )}
-                    <button
-                      onClick={() => togglePublish(p)}
-                      disabled={busyId === p.id}
-                      className={[
-                        "rounded-md border px-2.5 py-1 text-xs font-medium disabled:opacity-50",
-                        isPublished
-                          ? "border-accent-deep bg-tint text-accent-deep"
-                          : "border-border text-ink hover:bg-subtle",
-                      ].join(" ")}
-                    >
-                      {isPublished ? "✓ 발행됨 (해제)" : "발행 완료로 표시"}
-                    </button>
-                    <button
-                      onClick={() => remove(p)}
-                      disabled={busyId === p.id}
-                      className={[
-                        "rounded-md border px-2.5 py-1 text-xs disabled:opacity-50",
-                        confirmId === p.id
-                          ? "border-red-500 bg-red-50 font-medium text-red-600"
-                          : "border-border text-muted hover:bg-subtle",
-                      ].join(" ")}
-                    >
-                      {confirmId === p.id ? "정말 삭제? (다시 클릭)" : "삭제"}
-                    </button>
-                    {confirmId === p.id && (
-                      <button
-                        onClick={() => setConfirmId(null)}
-                        className="px-1.5 py-1 text-xs text-muted hover:text-ink"
-                      >
-                        취소
-                      </button>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
         )}
+
+        {contents.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-muted">
+              생성 완료 콘텐츠 ({contents.length})
+            </h4>
+            <ul className="space-y-2">
+              {contents.map((p) => renderItem(p, false))}
+            </ul>
+          </div>
+        )}
+
+        {drafts.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-muted">
+              글감 ({drafts.length})
+            </h4>
+            <ul className="space-y-2">{drafts.map((p) => renderItem(p, true))}</ul>
+          </div>
+        )}
+
         {msg && <p className="text-xs text-red-600">{msg}</p>}
+
+        <button
+          onClick={onAddExternal}
+          className="w-full rounded-md border border-dashed border-accent-deep px-3 py-2 text-sm font-medium text-accent-deep hover:bg-tint"
+        >
+          + 이 날짜에 외부 작성 글 추가 (제목·링크)
+        </button>
       </div>
     </div>
   );
@@ -911,10 +980,12 @@ function DayPanel({
 /** 생성 엔진 밖에서 따로 작성·발행한 글을 제목+링크로 플랜에 등록하는 모달 */
 function ExternalPostModal({
   clientId,
+  defaultDate,
   onClose,
   onCreated,
 }: {
   clientId: string;
+  defaultDate?: string | null;
   onClose: () => void;
   onCreated: (plan: ContentPlan) => void;
 }) {
@@ -922,7 +993,7 @@ function ExternalPostModal({
   const [url, setUrl] = useState("");
   const [channel, setChannel] = useState(CHANNELS[0]?.key ?? "");
   const [status, setStatus] = useState("published");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(defaultDate ?? "");
   const [memo, setMemo] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
