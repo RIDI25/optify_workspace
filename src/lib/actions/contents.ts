@@ -56,10 +56,19 @@ export async function deleteContent(
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/** KST 기준 오늘 날짜 (서버는 UTC — toISOString은 아침에 전날로 밀린다) */
+function todayKst(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+  }).format(new Date());
+}
+
 /**
  * 발행 완료 수동 표시 [AUDIT M-1].
  * 네이버/스레드는 외부에서 수동 발행하므로 published_at을 직접 기록해
  * 대시보드·리포트의 발행 집계에 반영한다.
+ * 캘린더 반영 보장: 플랜이 없으면 자동 생성하고, 예정일이 없으면 오늘로 채운다
+ * — 캘린더는 scheduled_date 있는 플랜만 그리기 때문.
  */
 export async function setPublishedStatus(
   contentId: string,
@@ -73,17 +82,53 @@ export async function setPublishedStatus(
     .eq("id", contentId);
   if (error) return { ok: false, publishedAt: null, error: error.message };
 
-  // 연결된 플랜 상태 동기화 — 캘린더·플랜 목록에 발행 완료가 반영되도록
   const { data: c } = await supabase
     .from("contents")
-    .select("plan_id")
+    .select("plan_id, client_id, channel, title")
     .eq("id", contentId)
     .single();
-  if (c?.plan_id) {
-    await supabase
+  if (!c) return { ok: true, publishedAt };
+
+  if (c.plan_id) {
+    // 연결된 플랜 상태 동기화 + 발행 시 날짜 없으면 오늘로
+    const patch: Record<string, unknown> = {
+      status: published ? "published" : "review",
+    };
+    if (published) {
+      const { data: plan } = await supabase
+        .from("content_plans")
+        .select("scheduled_date")
+        .eq("id", c.plan_id)
+        .single();
+      if (!plan?.scheduled_date) patch.scheduled_date = todayKst();
+    }
+    await supabase.from("content_plans").update(patch).eq("id", c.plan_id);
+  } else if (published) {
+    // 플랜 미연결 콘텐츠 — 발행 표시 시 오늘 날짜 플랜을 자동 생성해 캘린더에 반영
+    const { data: cs } = await supabase
+      .from("channel_settings")
+      .select("default_assignee")
+      .eq("client_id", c.client_id)
+      .eq("channel", c.channel)
+      .single();
+    const { data: plan } = await supabase
       .from("content_plans")
-      .update({ status: published ? "published" : "review" })
-      .eq("id", c.plan_id);
+      .insert({
+        client_id: c.client_id,
+        title: c.title || "(제목 없음)",
+        channel: c.channel,
+        status: "published",
+        scheduled_date: todayKst(),
+        assignee: cs?.default_assignee ?? null,
+      })
+      .select("id")
+      .single();
+    if (plan) {
+      await supabase
+        .from("contents")
+        .update({ plan_id: plan.id })
+        .eq("id", contentId);
+    }
   }
   return { ok: true, publishedAt };
 }
