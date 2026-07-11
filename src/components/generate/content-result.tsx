@@ -265,7 +265,12 @@ export function ContentResultView(props: ContentResultData) {
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
       {/* 좌: 완성 글 렌더 */}
-      <div className="lg:col-span-2">
+      <div className="space-y-3 lg:col-span-2">
+        {props.title && (
+          <h2 className="rounded-lg border border-border bg-surface px-5 py-3 text-lg font-bold text-ink">
+            {props.title}
+          </h2>
+        )}
         {displayHtml ? (
           <article
             className="prose prose-sm max-w-none rounded-lg border border-border bg-surface p-5 prose-headings:text-ink prose-a:text-accent-deep prose-img:rounded-lg prose-strong:text-ink"
