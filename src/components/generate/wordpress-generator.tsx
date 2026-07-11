@@ -12,7 +12,12 @@ interface WpResult {
   meta_description: string;
   slug: string;
   faq: { question: string; answer: string }[];
-  image_prompts: { prompt: string; alt_text: string; filename: string }[];
+  image_prompts: {
+    prompt: string;
+    title?: string;
+    alt_text: string;
+    filename: string;
+  }[];
 }
 
 type Phase = "idle" | "content" | "images" | "ready";
@@ -98,6 +103,7 @@ export function WordpressGenerator({
             url: d.url,
             alt: d.alt || prompts[i].alt_text,
             filename: d.filename || prompts[i].filename,
+            title: prompts[i].title,
           });
           setImages([...collected]);
         } else {

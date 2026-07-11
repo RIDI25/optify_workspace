@@ -1,6 +1,8 @@
 export interface PlacedImage {
   url: string;
   alt: string;
+  /** 키워드 기반 한국어 이미지 제목 — img title 속성으로 삽입 */
+  title?: string;
 }
 
 /**
@@ -15,8 +17,9 @@ export function assembleHtmlWithImages(
 ): string {
   if (images.length === 0) return contentHtml;
 
+  const esc = (s: string) => s.replace(/"/g, "&quot;");
   const figure = (img: PlacedImage) =>
-    `<figure class="wp-block-image size-large"><img src="${img.url}" alt="${img.alt}" /></figure>`;
+    `<figure class="wp-block-image size-large"><img src="${img.url}" alt="${esc(img.alt)}"${img.title ? ` title="${esc(img.title)}"` : ""} /></figure>`;
 
   let html = contentHtml;
   const bodyImages = images.slice(1);

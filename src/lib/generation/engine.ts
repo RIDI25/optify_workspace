@@ -166,10 +166,10 @@ export function buildWordpressJsonPrompt(input: {
       '  "meta_description": "150자 내외 메타 디스크립션",',
       '  "slug": "영문 소문자 하이픈 슬러그",',
       '  "faq": [{ "question": "...", "answer": "두괄식 답변" }],  // 3~6개',
-      `  "image_prompts": [{ "prompt": "영문 이미지 생성 프롬프트(사진풍, 텍스트 없음)", "alt_text": "메인 키워드를 포함한 한국어 alt 텍스트", "filename": "메인 키워드 기반 영문 슬러그 + 2자리 순번, 예: dermatology-seo-guide-01.png" }]  // ${input.imageCount}개`,
+      `  "image_prompts": [{ "prompt": "영문 이미지 생성 프롬프트(사진풍, 텍스트 없음)", "title": "메인 키워드·주제에 맞는 간결한 한국어 이미지 제목", "alt_text": "메인 키워드를 포함한 한국어 alt 텍스트", "filename": "메인 키워드 기반 영문 슬러그 + 2자리 순번, 예: dermatology-seo-guide-01.png" }]  // ${input.imageCount}개`,
       "}",
       `  - image_prompts는 정확히 ${input.imageCount}개. filename은 서로 다른 순번(-01, -02 …)으로.`,
-      "  - alt_text와 filename에는 반드시 메인 키워드가 포함되어야 합니다.",
+      "  - title·alt_text·filename에는 반드시 메인 키워드가 포함되어야 합니다. title은 이미지가 놓일 본문 맥락을 반영해 서로 다르게.",
       "  - 근거 없는 통계·수치 금지. 확인 불가한 수치는 [출처 필요]로 표기.",
       "  - 두괄식이되 '결론부터 말씀드리면' 류로 두괄식임을 선언하는 문구 금지 — 답을 자연스럽게 먼저 서술.",
       "  - 분량: 각 H2 섹션 본문 400~600자 이상으로 충실히. content_html 전체(태그 제외) 3,000자 이상 필수. 얕게 끝내지 말 것.",
@@ -201,8 +201,8 @@ export function buildImagePromptsPrompt(input: {
 }): { system: string; user: string } {
   const system = [
     "너는 블로그 이미지 아트디렉터다. 주어진 본문의 [이미지: 설명] 위치와 전체 맥락을 참고해 이미지 생성 프롬프트를 JSON 배열로만 출력한다(코드블록·설명 문구 금지).",
-    "각 항목 형식: { \"prompt\": \"영어. 장면·구도·조명·분위기·스타일까지 상세하게. 사진풍(photorealistic). 이미지 안에 텍스트·글자·워터마크·로고 없음\", \"alt_text\": \"메인 키워드를 포함한 한국어 설명\", \"filename\": \"메인 키워드 영문 슬러그 + 2자리 순번 + .png\" }",
-    `정확히 ${input.count}개. filename 순번은 -01, -02 …로 서로 다르게. alt_text·filename에는 반드시 메인 키워드 포함.`,
+    "각 항목 형식: { \"prompt\": \"영어. 장면·구도·조명·분위기·스타일까지 상세하게. 사진풍(photorealistic). 이미지 안에 텍스트·글자·워터마크·로고 없음\", \"title\": \"메인 키워드·주제에 맞는 간결한 한국어 이미지 제목\", \"alt_text\": \"메인 키워드를 포함한 한국어 설명\", \"filename\": \"메인 키워드 영문 슬러그 + 2자리 순번 + .png\" }",
+    `정확히 ${input.count}개. filename 순번은 -01, -02 …로 서로 다르게. title·alt_text·filename에는 반드시 메인 키워드 포함.`,
   ].join("\n");
   const user = `메인 키워드: ${input.keyword}\n\n본문:\n${input.body}`;
   return { system, user };

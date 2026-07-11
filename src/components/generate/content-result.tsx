@@ -50,6 +50,12 @@ async function fetchBlob(url: string): Promise<Blob> {
 
 function ImageCard({ img }: { img: ContentImage }) {
   const [toast, setToast] = useState("");
+
+  function flash(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(""), 1800);
+  }
+
   async function download() {
     const blob = await fetchBlob(img.url);
     const u = URL.createObjectURL(blob);
@@ -59,18 +65,36 @@ function ImageCard({ img }: { img: ContentImage }) {
     a.click();
     URL.revokeObjectURL(u);
   }
-  async function copy() {
+
+  async function copyImage() {
     try {
       const blob = await fetchBlob(img.url);
-      await navigator.clipboard.write([
-        new ClipboardItem({ [blob.type]: blob }),
-      ]);
-      setToast("복사됨");
+      const item: Record<string, Blob> = { [blob.type]: blob };
+      // 이미지와 함께 제목 텍스트도 클립보드에 담는다 — 텍스트 붙여넣기 시 제목이 나온다
+      if (img.title) {
+        item["text/plain"] = new Blob([img.title], { type: "text/plain" });
+      }
+      await navigator.clipboard.write([new ClipboardItem(item)]);
+      flash(img.title ? "이미지+제목 복사됨" : "복사됨");
     } catch {
-      setToast("복사 미지원 — 다운로드 이용");
+      // 일부 브라우저는 복수 타입 미지원 — 이미지 단독으로 재시도
+      try {
+        const blob = await fetchBlob(img.url);
+        await navigator.clipboard.write([
+          new ClipboardItem({ [blob.type]: blob }),
+        ]);
+        flash("복사됨 (제목은 별도 복사)");
+      } catch {
+        flash("복사 미지원 — 다운로드 이용");
+      }
     }
-    setTimeout(() => setToast(""), 1800);
   }
+
+  async function copyText(label: string, text: string) {
+    await navigator.clipboard.writeText(text);
+    flash(`${label} 복사됨`);
+  }
+
   return (
     <div className="space-y-2 rounded-md border border-border p-2">
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -79,7 +103,32 @@ function ImageCard({ img }: { img: ContentImage }) {
         alt={img.alt}
         className="w-full rounded-md border border-border object-cover"
       />
-      {img.alt && <p className="text-xs text-muted">{img.alt}</p>}
+      {img.title && (
+        <div className="flex items-start justify-between gap-2">
+          <p className="min-w-0 text-xs font-medium text-ink">
+            <span className="text-muted">제목</span> {img.title}
+          </p>
+          <button
+            onClick={() => copyText("제목", img.title!)}
+            className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted hover:bg-subtle"
+          >
+            복사
+          </button>
+        </div>
+      )}
+      {img.alt && (
+        <div className="flex items-start justify-between gap-2">
+          <p className="min-w-0 text-xs text-muted">
+            <span className="font-medium">ALT</span> {img.alt}
+          </p>
+          <button
+            onClick={() => copyText("ALT", img.alt)}
+            className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted hover:bg-subtle"
+          >
+            복사
+          </button>
+        </div>
+      )}
       <div className="flex gap-2">
         <button
           onClick={download}
@@ -88,7 +137,7 @@ function ImageCard({ img }: { img: ContentImage }) {
           다운로드
         </button>
         <button
-          onClick={copy}
+          onClick={copyImage}
           className="flex-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-subtle"
         >
           이미지 복사
@@ -388,8 +437,8 @@ export function ContentResultView(props: ContentResultData) {
           </div>
         )}
 
-        {/* 생성 이미지 (네이버: 다운로드/복사용) — 실패 시에도 블록 유지해 알림 표시 */}
-        {isNaver &&
+        {/* 생성 이미지 (다운로드/복사 + 제목·ALT) — 실패 시에도 블록 유지해 알림 표시 */}
+        {(isNaver || isWp) &&
           (props.imagesGenerating || images.length > 0 || props.imagesNotice) && (
             <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
               <h3 className="text-sm font-semibold text-ink">생성 이미지</h3>

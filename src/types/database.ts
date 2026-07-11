@@ -77,6 +77,8 @@ export interface ContentImage {
   url: string;
   alt: string;
   filename: string;
+  /** 주제·키워드 기반 한국어 이미지 제목 (WP 미디어 제목/캡션용) */
+  title?: string;
 }
 
 export interface ContentMeta {

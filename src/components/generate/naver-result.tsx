@@ -44,8 +44,12 @@ export function NaverResult({
           setNotice(`이미지 프롬프트 생성 실패: ${pd.error ?? "알 수 없음"}`);
           return;
         }
-        const prompts: { prompt: string; alt_text: string; filename: string }[] =
-          Array.isArray(pd.image_prompts) ? pd.image_prompts : [];
+        const prompts: {
+          prompt: string;
+          title?: string;
+          alt_text: string;
+          filename: string;
+        }[] = Array.isArray(pd.image_prompts) ? pd.image_prompts : [];
 
         if (prompts.length === 0) {
           setNotice("생성할 이미지 프롬프트가 없습니다.");
@@ -73,6 +77,7 @@ export function NaverResult({
                 url: d.url,
                 alt: d.alt || prompts[i].alt_text,
                 filename: d.filename || prompts[i].filename,
+                title: prompts[i].title,
               });
               setImages([...collected]);
             } else {
