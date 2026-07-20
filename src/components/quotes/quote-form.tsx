@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { QUOTE_CATALOG, QUOTE_UNITS, type QuoteCatalogItem } from "@/lib/quote-items";
+import {
+  CATALOG_BASE_PRICES,
+  QUOTE_CATALOG,
+  QUOTE_UNITS,
+  formatManwon,
+  type QuoteCatalogItem,
+} from "@/lib/quote-items";
 import { QUOTE_VALID_DAYS } from "@/lib/quote-config";
 import {
   calcQuoteTotals,
@@ -19,6 +25,8 @@ interface DraftItem {
   qty: number;
   unit: string;
   unit_price: number;
+  /** 카탈로그 기준단가 — 표시·되돌리기용 (스냅샷에는 저장 안 함) */
+  base_price: number | null;
 }
 
 function localDate(offsetDays = 0): string {
@@ -66,7 +74,13 @@ export function QuoteForm({
     setCustomerEmail(seed.customer_email ?? "");
     setQuoteDate(localDate());
     setValidUntil(localDate(QUOTE_VALID_DAYS));
-    setItems(seed.items.map((it) => ({ ...it, key: nextKey() })));
+    setItems(
+      seed.items.map((it) => ({
+        ...it,
+        key: nextKey(),
+        base_price: CATALOG_BASE_PRICES.get(it.name) ?? null,
+      })),
+    );
     setVatMode(seed.vat_mode);
     setNotes(seed.notes ?? "");
     setSavedQuoteId(null);
@@ -78,14 +92,23 @@ export function QuoteForm({
   function addCatalogItem(category: string, item: QuoteCatalogItem) {
     setItems((prev) => [
       ...prev,
-      { key: nextKey(), category, name: item.name, detail: item.detail, qty: 1, unit: item.unit, unit_price: 0 },
+      {
+        key: nextKey(),
+        category,
+        name: item.name,
+        detail: item.detail,
+        qty: 1,
+        unit: item.unit,
+        unit_price: item.basePrice, // 기준단가 자동 입력 (수동 수정 가능)
+        base_price: item.basePrice,
+      },
     ]);
   }
 
   function addCustomItem() {
     setItems((prev) => [
       ...prev,
-      { key: nextKey(), category: null, name: "", detail: "", qty: 1, unit: "식", unit_price: 0 },
+      { key: nextKey(), category: null, name: "", detail: "", qty: 1, unit: "식", unit_price: 0, base_price: null },
     ]);
   }
 
@@ -261,10 +284,10 @@ export function QuoteForm({
                   <button
                     key={item.name}
                     onClick={() => addCatalogItem(cat.category, item)}
-                    title={item.detail}
+                    title={`${item.detail} · 기준 ${formatManwon(item.basePrice)}원`}
                     className="rounded border border-border px-2 py-1 text-xs text-ink hover:border-accent-deep hover:bg-tint"
                   >
-                    + {item.name}
+                    + {item.name} <span className="text-muted">{formatManwon(item.basePrice)}</span>
                   </button>
                 ))}
               </div>
@@ -293,11 +316,12 @@ export function QuoteForm({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted">
+                  <th className="w-24 py-2 pr-2 font-medium">구분</th>
                   <th className="py-2 pr-2 font-medium">품목</th>
                   <th className="py-2 pr-2 font-medium">내역</th>
                   <th className="w-16 py-2 pr-2 font-medium">수량</th>
                   <th className="w-20 py-2 pr-2 font-medium">단위</th>
-                  <th className="w-32 py-2 pr-2 font-medium">단가 (원)</th>
+                  <th className="w-36 py-2 pr-2 font-medium">단가 (원)</th>
                   <th className="w-28 py-2 pr-2 text-right font-medium">금액</th>
                   <th className="w-8 py-2" />
                 </tr>
@@ -305,10 +329,12 @@ export function QuoteForm({
               <tbody>
                 {items.map((it) => (
                   <tr key={it.key} className="border-b border-border">
-                    <td className="py-1.5 pr-2 align-top">
-                      {it.category && (
-                        <p className="text-[10px] text-muted">{it.category}</p>
-                      )}
+                    <td className="py-1.5 pr-2 align-middle">
+                      <span className="whitespace-nowrap text-[10px] text-muted">
+                        {it.category ?? "직접 입력"}
+                      </span>
+                    </td>
+                    <td className="py-1.5 pr-2 align-middle">
                       <input
                         value={it.name}
                         onChange={(e) => updateItem(it.key, { name: e.target.value })}
@@ -316,7 +342,7 @@ export function QuoteForm({
                         className={`w-full min-w-36 ${input}`}
                       />
                     </td>
-                    <td className="py-1.5 pr-2 align-top">
+                    <td className="py-1.5 pr-2 align-middle">
                       <input
                         value={it.detail}
                         onChange={(e) => updateItem(it.key, { detail: e.target.value })}
@@ -324,7 +350,7 @@ export function QuoteForm({
                         className={`w-full min-w-44 ${input}`}
                       />
                     </td>
-                    <td className="py-1.5 pr-2 align-top">
+                    <td className="py-1.5 pr-2 align-middle">
                       <input
                         type="number"
                         min={1}
@@ -333,7 +359,7 @@ export function QuoteForm({
                         className={`w-full ${input}`}
                       />
                     </td>
-                    <td className="py-1.5 pr-2 align-top">
+                    <td className="py-1.5 pr-2 align-middle">
                       <select
                         value={it.unit}
                         onChange={(e) => updateItem(it.key, { unit: e.target.value })}
@@ -346,7 +372,7 @@ export function QuoteForm({
                         ))}
                       </select>
                     </td>
-                    <td className="py-1.5 pr-2 align-top">
+                    <td className="py-1.5 pr-2 align-middle">
                       <input
                         type="number"
                         min={0}
@@ -357,6 +383,20 @@ export function QuoteForm({
                         }
                         className={`w-full text-right ${input}`}
                       />
+                      {it.base_price != null && (
+                        <button
+                          onClick={() => updateItem(it.key, { unit_price: it.base_price! })}
+                          title="기준단가로 되돌리기"
+                          className={[
+                            "mt-0.5 block w-full text-right text-[10px]",
+                            it.unit_price === it.base_price
+                              ? "text-muted/60"
+                              : "text-muted hover:text-accent-deep",
+                          ].join(" ")}
+                        >
+                          기준 {formatManwon(it.base_price)}
+                        </button>
+                      )}
                     </td>
                     <td className="py-1.5 pr-2 text-right align-middle font-mono text-ink">
                       {Math.round(it.qty * it.unit_price).toLocaleString("ko-KR")}
