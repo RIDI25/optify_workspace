@@ -12,6 +12,7 @@ export type KeywordStatus = "candidate" | "planned" | "discarded";
 export type PlanStatus = "idea" | "writing" | "review" | "published";
 export type ReportStatus = "draft" | "final";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
+export type QuoteStatus = "draft" | "sent" | "won" | "expired";
 
 /** 현재 사용되는 채널 값(참고용). 하드코딩 강제 아님 — string 어디에도 대입 가능. */
 export const KNOWN_CHANNELS = ["naver_blog", "wordpress", "threads"] as const;
@@ -139,6 +140,38 @@ export interface Report extends Timestamps {
   status: ReportStatus;
 }
 
+/** 견적 품목 행 (quotes.items jsonb) — 발행 시점 스냅샷 */
+export interface QuoteLineItemRow {
+  category: string | null; // 카탈로그 카테고리, 수기 품목은 null
+  name: string;
+  detail: string;
+  qty: number;
+  unit: string;
+  unit_price: number;
+  amount: number;
+}
+
+export interface Quote extends Timestamps {
+  id: string;
+  quote_no: string;
+  customer_name: string;
+  customer_contact: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
+  quote_date: string;
+  valid_until: string | null;
+  items: QuoteLineItemRow[];
+  vat_mode: "excluded" | "included";
+  supply_amount: number;
+  vat_amount: number;
+  total_amount: number;
+  notes: string | null;
+  status: QuoteStatus;
+  exported_files: { format: string; storage_path: string; exported_at: string | null }[];
+  created_by: string | null;
+  updated_at: string;
+}
+
 export interface ApiUsageLog extends Timestamps {
   id: string;
   user_id: string | null;
@@ -177,6 +210,7 @@ export interface Database {
       content_plans: TableShape<ContentPlan>;
       contents: TableShape<Content>;
       reports: TableShape<Report>;
+      quotes: TableShape<Quote>;
       api_usage_logs: TableShape<ApiUsageLog>;
     };
     Views: Record<string, never>;

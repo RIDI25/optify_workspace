@@ -33,7 +33,8 @@ Anthropic(콘텐츠) · Gemini(이미지) · Google Ads/GSC/GA4 · `@react-pdf/r
 
 ## 현재 상태
 Phase 1 완료(생성 엔진·WP/네이버/스레드·키워드·플랜·라이브러리·대시보드), Phase 2 진행 중(리포트).
-DB: `supabase/migrations/0001~0006`. 0006(contents.meta)은 DDL이라 SQL Editor에서 수동 실행.
+견적서 기능 완료(/quotes, owner 전용 — 품목 카탈로그는 `lib/quote-items.ts`, 공급자 정보는 `lib/quote-config.ts`).
+DB: `supabase/migrations/0001~0013`. DDL은 SQL Editor에서 수동 실행 (0013=견적서 quotes).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)

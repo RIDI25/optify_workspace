@@ -21,14 +21,17 @@ export function Sidebar({ role }: { role: Role }) {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => !item.ownerOnly || role === "owner").map((item, i, visible) => {
           const active =
             item.href === "/"
               ? pathname === "/"
               : pathname.startsWith(item.href);
+          // 같은 섹션 캡션이 연속되면 첫 항목에만 표시 (ownerOnly 필터 후 기준)
+          const showSection =
+            item.section && visible[i - 1]?.section !== item.section;
           return (
             <div key={item.href}>
-              {item.section && (
+              {showSection && (
                 <p className="px-3 pb-1 pt-4 text-[11px] font-medium uppercase tracking-wide text-muted">
                   {item.section}
                 </p>

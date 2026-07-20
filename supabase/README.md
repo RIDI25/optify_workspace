@@ -30,6 +30,7 @@ on conflict (id) do update set name = excluded.name, role = excluded.role;
 ## 4. Storage 버킷 (Phase 1에서 사용)
 - `blog-images` (public) — Gemini 생성 이미지
 - 리포트 내보내기 파일 저장용 버킷은 Phase 2에서 추가
+- `reports` / `quotes` (private) — 리포트·견적서 내보내기. 최초 내보내기 시 서버가 자동 생성.
 
 ## 5. 환경변수
 Settings → API에서 URL / anon key / service_role key를 복사해 `.env.local`에 입력.
