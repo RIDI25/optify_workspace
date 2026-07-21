@@ -1,5 +1,6 @@
 import { brandRulesBlock } from "@/lib/generation/brand-rules";
 import { businessContextBlock } from "@/lib/generation/business-context";
+import { KOREAN_STYLE_BLOCK, channelDivergenceBlock } from "@/lib/generation/korean-style";
 import { naverCategoryPromptBlock } from "@/lib/naver-categories";
 
 export interface GenerateInput {
@@ -95,6 +96,10 @@ export function buildSystemPrompt(input: GenerateInput): string {
     ].join("\n"),
   );
 
+  parts.push(KOREAN_STYLE_BLOCK);
+  const divergence = channelDivergenceBlock(input.channel);
+  if (divergence) parts.push(divergence);
+
   if (input.channel === "naver_blog") {
     parts.push(naverCategoryPromptBlock(input.naverCategory));
     parts.push(
@@ -151,6 +156,8 @@ export function buildWordpressJsonPrompt(input: {
     input.isInternalClient ? businessContextBlock() : "",
     "당신은 옵티파이(검색 마케팅 회사)의 워드프레스 SEO 블로그 작가입니다. 아래 채널 프리셋을 철저히 준수하세요.",
     renderPreset(input.preset),
+    KOREAN_STYLE_BLOCK,
+    channelDivergenceBlock("wordpress"),
     [
       "[어미 리듬 — 문체]",
       "  - '~합니다/~입니다' 체를 기본으로 하되, '~해요/~인데요/~죠' 체를 자연스럽게 섞어 리듬을 만드세요. 정보 전달·단정·설명은 '~합니다/~입니다'로, 말 걸기·부연·전환·공감은 '~해요/~인데요/~죠'로 푸세요.",
@@ -306,8 +313,10 @@ export function buildRefinePrompt(
   instruction: string,
   selection?: string,
 ): { system: string; user: string } {
-  const system =
-    "당신은 옵티파이의 콘텐츠 편집자입니다. 주어진 지시에 따라 본문을 수정하고, 수정된 전체 본문만 출력하세요. 메타 설명 금지.";
+  const system = [
+    "당신은 옵티파이의 콘텐츠 편집자입니다. 주어진 지시에 따라 본문을 수정하고, 수정된 전체 본문만 출력하세요. 메타 설명 금지.",
+    KOREAN_STYLE_BLOCK,
+  ].join("\n\n");
   const user = [
     selection ? `수정 대상 부분:\n${selection}\n` : "",
     `수정 지시: ${instruction}`,

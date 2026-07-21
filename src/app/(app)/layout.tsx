@@ -15,7 +15,7 @@ export default async function AppLayout({
       <div className="flex min-h-dvh">
         <Sidebar role={profile.role} />
         <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar userName={profile.name} />
+          <Topbar userName={profile.name} role={profile.role} />
           <main className="flex-1 overflow-auto bg-subtle p-6">{children}</main>
         </div>
       </div>
