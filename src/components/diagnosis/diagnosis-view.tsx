@@ -174,7 +174,7 @@ export function DiagnosisView() {
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="예: kims-hearing.com"
+              placeholder="예: optify.kr"
               className={`w-full ${input}`}
             />
           </label>
