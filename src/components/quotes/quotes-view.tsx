@@ -5,7 +5,13 @@ import type { Quote } from "@/types/database";
 import { QuoteForm } from "@/components/quotes/quote-form";
 import { QuoteList } from "@/components/quotes/quote-list";
 
-export function QuotesView({ leadId = null }: { leadId?: string | null }) {
+export function QuotesView({
+  leadId = null,
+  diagnosisId = null,
+}: {
+  leadId?: string | null;
+  diagnosisId?: string | null;
+}) {
   const [seed, setSeed] = useState<Quote | null>(null);
   const [seedNonce, setSeedNonce] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -23,6 +29,7 @@ export function QuotesView({ leadId = null }: { leadId?: string | null }) {
         seed={seed}
         seedNonce={seedNonce}
         leadId={leadId}
+        diagnosisId={diagnosisId}
         onExported={() => setRefreshKey((k) => k + 1)}
       />
 

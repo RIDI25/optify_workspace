@@ -204,6 +204,18 @@ export interface AppSetting {
   updated_at: string;
 }
 
+export interface SeoDiagnosis extends Timestamps {
+  id: string;
+  url: string;
+  lead_id: string | null;
+  has_csv: boolean;
+  total_score: number | null;
+  results: Record<string, unknown>; // lib/seo-audit/types.ts DiagnosisResult
+  ai_summary: string | null;
+  exported_files: { format: string; storage_path: string; exported_at: string | null }[];
+  created_by: string | null;
+}
+
 export interface ApiUsageLog extends Timestamps {
   id: string;
   user_id: string | null;
@@ -245,6 +257,7 @@ export interface Database {
       quotes: TableShape<Quote>;
       leads: TableShape<Lead>;
       app_settings: TableShape<AppSetting>;
+      seo_diagnoses: TableShape<SeoDiagnosis>;
       api_usage_logs: TableShape<ApiUsageLog>;
     };
     Views: Record<string, never>;

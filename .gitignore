@@ -45,3 +45,6 @@ gcp-*.json
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 고객사 크롤 데이터 (스크리밍프로그 내보내기 등) — 커밋 금지
+*.csv

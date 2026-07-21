@@ -110,6 +110,14 @@ export const CATALOG_BASE_PRICES: ReadonlyMap<string, number> = new Map(
   QUOTE_CATALOG.flatMap((c) => c.items.map((it) => [it.name, it.basePrice])),
 );
 
+/** 품목명 → 카테고리+품목 (SEO 진단 → 견적 초안 자동 생성용) */
+export const CATALOG_ITEM_INDEX: ReadonlyMap<
+  string,
+  { category: string; item: QuoteCatalogItem }
+> = new Map(
+  QUOTE_CATALOG.flatMap((c) => c.items.map((it) => [it.name, { category: c.category, item: it }])),
+);
+
 /** 기준단가 표시용: 500,000 → '50만' */
 export function formatManwon(n: number): string {
   return n % MAN === 0 ? `${(n / MAN).toLocaleString("ko-KR")}만` : n.toLocaleString("ko-KR");

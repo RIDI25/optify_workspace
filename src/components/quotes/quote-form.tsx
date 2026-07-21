@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   CATALOG_BASE_PRICES,
+  CATALOG_ITEM_INDEX,
   QUOTE_CATALOG,
   QUOTE_UNITS,
   formatManwon,
@@ -43,6 +44,7 @@ export function QuoteForm({
   seed,
   seedNonce,
   leadId = null,
+  diagnosisId = null,
   onExported,
 }: {
   /** 내역 리스트 '복사' 시 폼에 채울 견적 (새 견적으로 시작) */
@@ -50,6 +52,8 @@ export function QuoteForm({
   seedNonce: number;
   /** 리드에서 '견적 작성'으로 진입 시 — 고객 정보 프리필 + 견적에 연결 */
   leadId?: string | null;
+  /** SEO 진단에서 '개선 견적 만들기'로 진입 시 — 개선 품목 프리필 */
+  diagnosisId?: string | null;
   onExported: () => void;
 }) {
   const keyRef = useRef(0);
@@ -69,6 +73,58 @@ export function QuoteForm({
   const [linkedLeadId, setLinkedLeadId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string>("");
   const [msg, setMsg] = useState("");
+
+  // SEO 진단에서 진입 (/quotes?diagnosisId=...) → 개선 품목·고객 정보 프리필
+  useEffect(() => {
+    if (!diagnosisId) return;
+    const supabase = createClient();
+    (async () => {
+      const { data } = await supabase
+        .from("seo_diagnoses")
+        .select("*")
+        .eq("id", diagnosisId)
+        .single();
+      if (!data) return;
+      const results = data.results as {
+        finalUrl?: string;
+        pageTitle?: string | null;
+        suggestedItems?: string[];
+      };
+      const drafts: DraftItem[] = (results.suggestedItems ?? [])
+        .map((name) => CATALOG_ITEM_INDEX.get(name))
+        .filter((e): e is NonNullable<typeof e> => !!e)
+        .map((e) => ({
+          key: nextKey(),
+          category: e.category,
+          name: e.item.name,
+          detail: e.item.detail,
+          qty: 1,
+          unit: e.item.unit,
+          unit_price: e.item.basePrice,
+          base_price: e.item.basePrice,
+        }));
+      if (drafts.length) setItems(drafts);
+      if (data.lead_id) {
+        setLinkedLeadId(data.lead_id);
+        const { data: lead } = await supabase
+          .from("leads")
+          .select("*")
+          .eq("id", data.lead_id)
+          .single();
+        if (lead) {
+          setCustomerName(lead.company_name);
+          setCustomerContact(lead.contact_name ?? "");
+          setCustomerPhone(lead.phone ?? "");
+          setCustomerEmail(lead.email ?? "");
+        }
+      } else if (results.finalUrl) {
+        const host = new URL(results.finalUrl).hostname.replace(/^www\./, "");
+        setCustomerName(results.pageTitle?.split(/[|\-–]/)[0].trim() || host);
+      }
+      setMsg(`진단 결과에서 개선 품목 ${drafts.length}개를 불러왔습니다. 수량·단가를 확인하세요.`);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diagnosisId]);
 
   // 리드에서 진입 (/quotes?leadId=...) → 고객 정보 프리필 + 연결
   useEffect(() => {

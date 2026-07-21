@@ -21,6 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/library", label: "라이브러리", step: 4 },
   { href: "/reports", label: "리포트", step: 5 },
   { href: "/sales", label: "영업·리드", section: "영업", ownerOnly: true },
+  { href: "/diagnosis", label: "SEO 진단", section: "영업", ownerOnly: true },
   { href: "/quotes", label: "견적서", section: "영업", ownerOnly: true },
   { href: "/settings", label: "설정", section: "관리", ownerOnly: false }, // member는 조회만(페이지 내부에서 제어)
 ];
