@@ -15,7 +15,8 @@ import {
   type QuoteLineItem,
   type VatMode,
 } from "@/lib/export/quote-model";
-import type { Quote } from "@/types/database";
+import { createClient } from "@/lib/supabase/client";
+import type { Lead, Quote } from "@/types/database";
 
 interface DraftItem {
   key: number;
@@ -41,11 +42,14 @@ const input =
 export function QuoteForm({
   seed,
   seedNonce,
+  leadId = null,
   onExported,
 }: {
   /** 내역 리스트 '복사' 시 폼에 채울 견적 (새 견적으로 시작) */
   seed: Quote | null;
   seedNonce: number;
+  /** 리드에서 '견적 작성'으로 진입 시 — 고객 정보 프리필 + 견적에 연결 */
+  leadId?: string | null;
   onExported: () => void;
 }) {
   const keyRef = useRef(0);
@@ -62,8 +66,30 @@ export function QuoteForm({
   const [notes, setNotes] = useState("");
   const [savedQuoteId, setSavedQuoteId] = useState<string | null>(null);
   const [savedQuoteNo, setSavedQuoteNo] = useState<string | null>(null);
+  const [linkedLeadId, setLinkedLeadId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string>("");
   const [msg, setMsg] = useState("");
+
+  // 리드에서 진입 (/quotes?leadId=...) → 고객 정보 프리필 + 연결
+  useEffect(() => {
+    if (!leadId) return;
+    const supabase = createClient();
+    supabase
+      .from("leads")
+      .select("*")
+      .eq("id", leadId)
+      .single()
+      .then(({ data }) => {
+        const lead = data as Lead | null;
+        if (!lead) return;
+        setLinkedLeadId(lead.id);
+        setCustomerName(lead.company_name);
+        setCustomerContact(lead.contact_name ?? "");
+        setCustomerPhone(lead.phone ?? "");
+        setCustomerEmail(lead.email ?? "");
+        setMsg(`리드 '${lead.company_name}' 정보를 불러왔습니다. 출력 시 리드에 연결됩니다.`);
+      });
+  }, [leadId]);
 
   // '복사해서 새 견적' — 날짜는 오늘 기준으로 갱신, 견적번호는 새로 채번
   useEffect(() => {
@@ -85,6 +111,7 @@ export function QuoteForm({
     setNotes(seed.notes ?? "");
     setSavedQuoteId(null);
     setSavedQuoteNo(null);
+    setLinkedLeadId(seed.lead_id ?? null);
     setMsg(`${seed.quote_no} 내용을 복사했습니다. 출력 시 새 견적번호로 저장됩니다.`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedNonce]);
@@ -132,6 +159,7 @@ export function QuoteForm({
     setNotes("");
     setSavedQuoteId(null);
     setSavedQuoteNo(null);
+    setLinkedLeadId(null);
     setMsg("");
   }
 
@@ -174,6 +202,7 @@ export function QuoteForm({
             items: valid,
             vat_mode: vatMode,
             notes: notes || null,
+            lead_id: linkedLeadId,
           },
           format,
           exportedAt: new Date().toISOString(),

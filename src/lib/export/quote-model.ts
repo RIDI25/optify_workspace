@@ -49,6 +49,21 @@ export function calcQuoteTotals(items: QuoteLineItem[], vatMode: VatMode): Quote
 
 export const won = (n: number) => `${Math.round(n).toLocaleString("ko-KR")}원`;
 
+export type QuoteDocType = "quote" | "contract" | "invoice";
+export type InvoiceStage = "full" | "deposit" | "balance";
+
+/** 계약금/잔금 분할 (합계 = total 보장) */
+export function splitPayment(total: number, depositRate: number) {
+  const deposit = Math.round(total * depositRate);
+  return { deposit, balance: total - deposit };
+}
+
+/** VAT 포함 금액에서 공급가·부가세 역산 (청구서 분할 청구용) */
+export function vatBreakdown(totalInclVat: number) {
+  const supply = Math.round(totalInclVat / 1.1);
+  return { supply, vat: totalInclVat - supply };
+}
+
 const KO_DIGITS = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"];
 const KO_SMALL = ["", "십", "백", "천"];
 const KO_BIG = ["", "만", "억", "조"];

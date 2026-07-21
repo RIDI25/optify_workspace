@@ -13,6 +13,7 @@ export type PlanStatus = "idea" | "writing" | "review" | "published";
 export type ReportStatus = "draft" | "final";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type QuoteStatus = "draft" | "sent" | "won" | "expired";
+export type LeadStatus = "inquiry" | "consulting" | "quoted" | "won" | "lost";
 
 /** 현재 사용되는 채널 값(참고용). 하드코딩 강제 아님 — string 어디에도 대입 가능. */
 export const KNOWN_CHANNELS = ["naver_blog", "wordpress", "threads"] as const;
@@ -167,8 +168,39 @@ export interface Quote extends Timestamps {
   total_amount: number;
   notes: string | null;
   status: QuoteStatus;
-  exported_files: { format: string; storage_path: string; exported_at: string | null }[];
+  exported_files: {
+    format: string;
+    storage_path: string;
+    exported_at: string | null;
+    doc_type?: string; // 'quote' | 'contract' | 'invoice' (기본 quote)
+    stage?: string; // invoice: 'full' | 'deposit' | 'balance'
+  }[];
+  lead_id: string | null;
+  won_at: string | null;
   created_by: string | null;
+  updated_at: string;
+}
+
+export interface Lead extends Timestamps {
+  id: string;
+  company_name: string;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  industry: string | null;
+  region: string | null;
+  source: string | null;
+  status: LeadStatus;
+  next_followup: string | null;
+  client_id: string | null;
+  memo: string | null;
+  created_by: string | null;
+  updated_at: string;
+}
+
+export interface AppSetting {
+  key: string;
+  value: string | null;
   updated_at: string;
 }
 
@@ -211,6 +243,8 @@ export interface Database {
       contents: TableShape<Content>;
       reports: TableShape<Report>;
       quotes: TableShape<Quote>;
+      leads: TableShape<Lead>;
+      app_settings: TableShape<AppSetting>;
       api_usage_logs: TableShape<ApiUsageLog>;
     };
     Views: Record<string, never>;

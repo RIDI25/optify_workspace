@@ -33,8 +33,10 @@ Anthropic(콘텐츠) · Gemini(이미지) · Google Ads/GSC/GA4 · `@react-pdf/r
 
 ## 현재 상태
 Phase 1 완료(생성 엔진·WP/네이버/스레드·키워드·플랜·라이브러리·대시보드), Phase 2 진행 중(리포트).
-견적서 기능 완료(/quotes, owner 전용 — 품목 카탈로그는 `lib/quote-items.ts`, 공급자 정보는 `lib/quote-config.ts`).
-DB: `supabase/migrations/0001~0013`. DDL은 SQL Editor에서 수동 실행 (0013=견적서 quotes).
+영업 축 완료(owner 전용): /quotes 견적서(품목 카탈로그 `lib/quote-items.ts`, 공급자·계좌·지급조건 `lib/quote-config.ts`,
+계약 조항 `lib/contract-terms.ts`, 계약서·청구서는 견적 내역의 문서 생성 드롭다운) + /sales 리드 파이프라인·매출
+대시보드(수주 리드 → 클라이언트 전환 시 온보딩 태스크 자동 발급).
+DB: `supabase/migrations/0001~0014`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)

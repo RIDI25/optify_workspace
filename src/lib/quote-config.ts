@@ -25,3 +25,18 @@ export const QUOTE_VALID_DAYS = 30;
 
 /** 견적번호 접두어: OPT-YYYYMMDD-NN */
 export const QUOTE_NO_PREFIX = "OPT";
+
+/** 입금 계좌 — 값 입력 전까지 계약서·청구서에 계좌란 미표기 */
+export interface BankAccount {
+  bank: string;
+  account: string;
+  holder: string;
+}
+export const QUOTE_BANK: BankAccount | null = null;
+// 예: export const QUOTE_BANK: BankAccount | null = { bank: "국민은행", account: "000-00-000000", holder: "박유리(옵티파이)" };
+
+/** 대금 지급 구조: 계약금 비율 (잔금 = 나머지) */
+export const DEPOSIT_RATE = 0.5;
+
+/** 청구서 납부기한 기본값 (발행일 + N일) */
+export const INVOICE_DUE_DAYS = 7;

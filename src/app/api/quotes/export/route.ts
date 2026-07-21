@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { QUOTE_NO_PREFIX, QUOTE_SUPPLIER } from "@/lib/quote-config";
+import { INVOICE_DUE_DAYS, QUOTE_NO_PREFIX, QUOTE_SUPPLIER } from "@/lib/quote-config";
 import {
   calcQuoteTotals,
+  type InvoiceStage,
   type QuoteDocModel,
+  type QuoteDocType,
   type QuoteLineItem,
   type VatMode,
 } from "@/lib/export/quote-model";
 import { renderQuotePdf } from "@/lib/export/quote-pdf";
 import { buildQuoteDocx } from "@/lib/export/quote-docx";
+import { renderContractPdf } from "@/lib/export/contract-pdf";
+import { buildContractDocx } from "@/lib/export/contract-docx";
+import { renderInvoicePdf } from "@/lib/export/invoice-pdf";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -25,6 +30,14 @@ interface QuotePayload {
   items: QuoteLineItem[];
   vat_mode: VatMode;
   notes: string | null;
+  lead_id?: string | null; // 리드에서 넘어온 견적이면 연결
+}
+
+/** KST 기준 날짜 문자열 */
+function kstDate(offsetDays = 0): string {
+  return new Date(Date.now() + 9 * 3_600_000 + offsetDays * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 }
 
 /** 오늘(KST) 기준 'OPT-YYYYMMDD-NN' 다음 번호 채번 */
@@ -70,15 +83,30 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { quoteId, quote, format, exportedAt } = body as {
+  const {
+    quoteId,
+    quote,
+    format,
+    exportedAt,
+    docType = "quote",
+    stage = "full",
+  } = body as {
     quoteId?: string;
     quote?: QuotePayload;
     format: "pdf" | "docx";
     exportedAt?: string;
+    docType?: QuoteDocType;
+    stage?: InvoiceStage;
   };
   if (!["pdf", "docx"].includes(format) || (!quoteId && !quote)) {
     return NextResponse.json(
       { ok: false, error: "format(pdf|docx)과 quote 또는 quoteId 필요" },
+      { status: 400 },
+    );
+  }
+  if (docType === "invoice" && format !== "pdf") {
+    return NextResponse.json(
+      { ok: false, error: "청구서는 PDF만 지원" },
       { status: 400 },
     );
   }
@@ -107,6 +135,7 @@ export async function POST(req: NextRequest) {
         vat_amount: totals.vat,
         total_amount: totals.total,
         notes: quote.notes || null,
+        lead_id: quote.lead_id ?? null,
       };
 
       if (quoteId) {
@@ -127,6 +156,14 @@ export async function POST(req: NextRequest) {
           .single();
         if (error) throw error;
         row = data;
+        // 리드 연결 견적 발행 → 리드 상태를 '견적'으로 (문의·상담 단계일 때만)
+        if (quote.lead_id) {
+          await supabase
+            .from("leads")
+            .update({ status: "quoted", updated_at: new Date().toISOString() })
+            .eq("id", quote.lead_id)
+            .in("status", ["inquiry", "consulting"]);
+        }
       }
     } else {
       const { data, error } = await supabase
@@ -156,14 +193,30 @@ export async function POST(req: NextRequest) {
     };
 
     const isPdf = format === "pdf";
-    const buffer = isPdf ? await renderQuotePdf(model) : await buildQuoteDocx(model);
+    const issueDate = kstDate();
+    let buffer: Buffer;
+    let docLabel: string;
+    if (docType === "contract") {
+      buffer = isPdf
+        ? await renderContractPdf(model, issueDate)
+        : await buildContractDocx(model, issueDate);
+      docLabel = "계약서";
+    } else if (docType === "invoice") {
+      buffer = await renderInvoicePdf(model, stage, issueDate, kstDate(INVOICE_DUE_DAYS));
+      docLabel = stage === "full" ? "청구서" : stage === "deposit" ? "청구서_계약금" : "청구서_잔금";
+    } else {
+      buffer = isPdf ? await renderQuotePdf(model) : await buildQuoteDocx(model);
+      docLabel = "견적서";
+    }
     const contentType = isPdf
       ? "application/pdf"
       : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
     const admin = createAdminClient();
     await admin.storage.createBucket(BUCKET, { public: false }).catch(() => undefined);
-    const storagePath = `${row!.id}/${model.quoteNo}.${format}`;
+    const suffix =
+      docType === "quote" ? "" : docType === "contract" ? "-contract" : `-invoice-${stage}`;
+    const storagePath = `${row!.id}/${model.quoteNo}${suffix}.${format}`;
     const { error: upErr } = await admin.storage
       .from(BUCKET)
       .upload(storagePath, buffer, { contentType, upsert: true });
@@ -172,14 +225,21 @@ export async function POST(req: NextRequest) {
     const { data: signed } = await admin.storage
       .from(BUCKET)
       .createSignedUrl(storagePath, 3600, {
-        download: `${model.quoteNo}_${model.customerName}.${format}`,
+        download: `${model.quoteNo}_${model.customerName}_${docLabel}.${format}`,
       });
 
-    // exported_files 기록 (동일 format은 최신으로 교체)
+    // exported_files 기록 (동일 문서종류·format은 최신으로 교체)
     const files = (Array.isArray(row!.exported_files) ? row!.exported_files : []).filter(
-      (f: { format?: string }) => f.format !== format,
+      (f: { format?: string; doc_type?: string; stage?: string }) =>
+        !(f.format === format && (f.doc_type ?? "quote") === docType && (f.stage ?? "full") === stage),
     );
-    files.push({ format, storage_path: storagePath, exported_at: exportedAt ?? null });
+    files.push({
+      format,
+      doc_type: docType,
+      stage,
+      storage_path: storagePath,
+      exported_at: exportedAt ?? null,
+    });
     await supabase.from("quotes").update({ exported_files: files }).eq("id", row!.id as string);
 
     return NextResponse.json({

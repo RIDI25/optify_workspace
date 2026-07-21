@@ -103,6 +103,18 @@ export default async function DashboardPage() {
   const myRejectedCount =
     profile.role === "member" ? (await myRejectedRes).count ?? 0 : 0;
 
+  // 팔로업 예정 리드 (owner 전용 — RLS로도 owner만 조회됨)
+  const followupCount =
+    profile.role === "owner"
+      ? (
+          await supabase
+            .from("leads")
+            .select("id", { count: "exact", head: true })
+            .lte("next_followup", ymd(now))
+            .in("status", ["inquiry", "consulting", "quoted"])
+        ).count ?? 0
+      : 0;
+
   // 온보딩 진행중 클라이언트 (is_internal 제외) [A-2]
   const [onboarding, cs, kws] = await Promise.all([
     onboardingRes,
@@ -209,6 +221,21 @@ export default async function DashboardPage() {
           </p>
           <p className="mt-0.5 text-xs text-muted">
             코멘트를 확인하고 수정 후 다시 요청하세요.
+          </p>
+        </Link>
+      )}
+
+      {/* 팔로업 예정 리드 (owner) */}
+      {profile.role === "owner" && followupCount > 0 && (
+        <Link
+          href="/sales"
+          className="block rounded-lg border border-amber-300 bg-amber-50 p-4 hover:bg-amber-100"
+        >
+          <p className="text-sm font-semibold text-amber-700">
+            팔로업 예정 리드 {followupCount}건
+          </p>
+          <p className="mt-0.5 text-xs text-muted">
+            영업·리드에서 오늘까지 팔로업할 리드를 확인하세요.
           </p>
         </Link>
       )}

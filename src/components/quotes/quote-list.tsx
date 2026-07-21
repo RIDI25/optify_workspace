@@ -42,8 +42,13 @@ export function QuoteList({
     };
   }, [refreshKey]);
 
-  async function download(quote: Quote, format: "pdf" | "docx") {
-    setBusyId(`${quote.id}:${format}`);
+  async function generateDoc(
+    quote: Quote,
+    format: "pdf" | "docx",
+    docType: "quote" | "contract" | "invoice" = "quote",
+    stage: "full" | "deposit" | "balance" = "full",
+  ) {
+    setBusyId(quote.id);
     setMsg("");
     try {
       const res = await fetch("/api/quotes/export", {
@@ -52,6 +57,8 @@ export function QuoteList({
         body: JSON.stringify({
           quoteId: quote.id,
           format,
+          docType,
+          stage,
           exportedAt: new Date().toISOString(),
         }),
       });
@@ -65,11 +72,21 @@ export function QuoteList({
     }
   }
 
-  async function updateStatus(id: string, status: QuoteStatus) {
+  async function updateStatus(quote: Quote, status: QuoteStatus) {
     const supabase = createClient();
-    const { error } = await supabase.from("quotes").update({ status }).eq("id", id);
-    if (!error) {
-      setQuotes((prev) => prev.map((q) => (q.id === id ? { ...q, status } : q)));
+    const won_at = status === "won" ? new Date().toISOString() : null;
+    const { error } = await supabase
+      .from("quotes")
+      .update({ status, won_at, updated_at: new Date().toISOString() })
+      .eq("id", quote.id);
+    if (error) return;
+    setQuotes((prev) => prev.map((q) => (q.id === quote.id ? { ...q, status, won_at } : q)));
+    // 리드 연결 견적이 수주되면 리드도 수주로 동기화
+    if (status === "won" && quote.lead_id) {
+      await supabase
+        .from("leads")
+        .update({ status: "won", updated_at: new Date().toISOString() })
+        .eq("id", quote.lead_id);
     }
   }
 
@@ -117,7 +134,7 @@ export function QuoteList({
                   <td className="py-2 pr-3">
                     <select
                       value={q.status}
-                      onChange={(e) => updateStatus(q.id, e.target.value as QuoteStatus)}
+                      onChange={(e) => updateStatus(q, e.target.value as QuoteStatus)}
                       className="rounded-md border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-accent-deep"
                     >
                       {Object.entries(STATUS_LABELS).map(([value, label]) => (
@@ -129,20 +146,33 @@ export function QuoteList({
                   </td>
                   <td className="py-2">
                     <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => download(q, "pdf")}
+                      <select
+                        value=""
                         disabled={!!busyId}
-                        className="rounded border border-border px-2 py-1 text-xs hover:bg-subtle disabled:opacity-50"
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (!v) return;
+                          const [docType, format, stage] = v.split(":") as [
+                            "quote" | "contract" | "invoice",
+                            "pdf" | "docx",
+                            "full" | "deposit" | "balance" | undefined,
+                          ];
+                          generateDoc(q, format, docType, stage ?? "full");
+                          e.target.value = "";
+                        }}
+                        className="rounded-md border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-accent-deep disabled:opacity-50"
                       >
-                        {busyId === `${q.id}:pdf` ? "생성 중…" : "PDF"}
-                      </button>
-                      <button
-                        onClick={() => download(q, "docx")}
-                        disabled={!!busyId}
-                        className="rounded border border-border px-2 py-1 text-xs hover:bg-subtle disabled:opacity-50"
-                      >
-                        {busyId === `${q.id}:docx` ? "생성 중…" : "docx"}
-                      </button>
+                        <option value="">
+                          {busyId === q.id ? "생성 중…" : "문서 생성…"}
+                        </option>
+                        <option value="quote:pdf">견적서 PDF</option>
+                        <option value="quote:docx">견적서 docx</option>
+                        <option value="contract:pdf">계약서 PDF</option>
+                        <option value="contract:docx">계약서 docx</option>
+                        <option value="invoice:pdf:full">청구서 (전액)</option>
+                        <option value="invoice:pdf:deposit">청구서 (계약금 50%)</option>
+                        <option value="invoice:pdf:balance">청구서 (잔금 50%)</option>
+                      </select>
                       <button
                         onClick={() => onCopy(q)}
                         className="rounded border border-border px-2 py-1 text-xs hover:bg-subtle"
