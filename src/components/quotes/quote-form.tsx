@@ -17,7 +17,8 @@ import {
   type VatMode,
 } from "@/lib/export/quote-model";
 import { createClient } from "@/lib/supabase/client";
-import type { Lead, Quote } from "@/types/database";
+import { DEAL_CHANNELS } from "@/lib/deal-channels";
+import type { DealChannel, Lead, Quote } from "@/types/database";
 
 interface DraftItem {
   key: number;
@@ -63,6 +64,9 @@ export function QuoteForm({
   const [customerContact, setCustomerContact] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [dealChannel, setDealChannel] = useState<DealChannel>("direct");
+  const [partnerName, setPartnerName] = useState("");
+  const [endClientName, setEndClientName] = useState("");
   const [quoteDate, setQuoteDate] = useState(localDate());
   const [validUntil, setValidUntil] = useState(localDate(QUOTE_VALID_DAYS));
   const [items, setItems] = useState<DraftItem[]>([]);
@@ -116,6 +120,8 @@ export function QuoteForm({
           setCustomerContact(lead.contact_name ?? "");
           setCustomerPhone(lead.phone ?? "");
           setCustomerEmail(lead.email ?? "");
+          setDealChannel(lead.deal_channel ?? "direct");
+          setPartnerName(lead.partner_name ?? "");
         }
       } else if (results.finalUrl) {
         const host = new URL(results.finalUrl).hostname.replace(/^www\./, "");
@@ -143,6 +149,13 @@ export function QuoteForm({
         setCustomerContact(lead.contact_name ?? "");
         setCustomerPhone(lead.phone ?? "");
         setCustomerEmail(lead.email ?? "");
+        setDealChannel(lead.deal_channel ?? "direct");
+        setPartnerName(lead.partner_name ?? "");
+        if (lead.deal_channel === "partner") {
+          // 파트너 경유: 실고객은 리드의 업체명, 견적 수신자는 파트너
+          setEndClientName(lead.company_name);
+          if (lead.partner_name) setCustomerName(lead.partner_name);
+        }
         setMsg(`리드 '${lead.company_name}' 정보를 불러왔습니다. 출력 시 리드에 연결됩니다.`);
       });
   }, [leadId]);
@@ -168,6 +181,9 @@ export function QuoteForm({
     setSavedQuoteId(null);
     setSavedQuoteNo(null);
     setLinkedLeadId(seed.lead_id ?? null);
+    setDealChannel(seed.deal_channel ?? "direct");
+    setPartnerName(seed.partner_name ?? "");
+    setEndClientName(seed.end_client_name ?? "");
     setMsg(`${seed.quote_no} 내용을 복사했습니다. 출력 시 새 견적번호로 저장됩니다.`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedNonce]);
@@ -216,6 +232,9 @@ export function QuoteForm({
     setSavedQuoteId(null);
     setSavedQuoteNo(null);
     setLinkedLeadId(null);
+    setDealChannel("direct");
+    setPartnerName("");
+    setEndClientName("");
     setMsg("");
   }
 
@@ -259,6 +278,9 @@ export function QuoteForm({
             vat_mode: vatMode,
             notes: notes || null,
             lead_id: linkedLeadId,
+            deal_channel: dealChannel,
+            partner_name: dealChannel === "direct" ? null : partnerName || null,
+            end_client_name: endClientName || null,
           },
           format,
           exportedAt: new Date().toISOString(),
@@ -337,6 +359,49 @@ export function QuoteForm({
             className={`w-full ${input}`}
           />
         </label>
+        <label className="space-y-1.5">
+          <span className="text-sm font-medium text-ink">거래 구분</span>
+          <select
+            value={dealChannel}
+            onChange={(e) => setDealChannel(e.target.value as DealChannel)}
+            className={`w-full ${input}`}
+          >
+            {DEAL_CHANNELS.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          {dealChannel === "partner" && (
+            <span className="block text-[11px] text-muted">
+              세금계산서 거래처 = 파트너. 견적서 수신(고객사명)도 보통 파트너로.
+            </span>
+          )}
+        </label>
+        {dealChannel !== "direct" && (
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-ink">
+              {dealChannel === "partner" ? "파트너명" : "소개자"}
+            </span>
+            <input
+              value={partnerName}
+              onChange={(e) => setPartnerName(e.target.value)}
+              placeholder={dealChannel === "partner" ? "세금계산서 거래처" : ""}
+              className={`w-full ${input}`}
+            />
+          </label>
+        )}
+        {dealChannel === "partner" && (
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-ink">실고객명 (건명)</span>
+            <input
+              value={endClientName}
+              onChange={(e) => setEndClientName(e.target.value)}
+              placeholder="실제 고객 구분용"
+              className={`w-full ${input}`}
+            />
+          </label>
+        )}
         <label className="space-y-1.5">
           <span className="text-sm font-medium text-ink">견적일</span>
           <input

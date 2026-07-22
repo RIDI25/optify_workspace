@@ -24,6 +24,8 @@ export interface QuoteTotals {
 export interface QuoteDocModel {
   quoteNo: string;
   customerName: string;
+  /** 실고객(건명) — 파트너 경유 건에서 문서에 '건명'으로 표기 */
+  endClientName?: string | null;
   customerContact: string | null;
   quoteDate: string; // 'YYYY-MM-DD'
   validUntil: string | null;

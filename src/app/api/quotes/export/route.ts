@@ -31,6 +31,9 @@ interface QuotePayload {
   vat_mode: VatMode;
   notes: string | null;
   lead_id?: string | null; // 리드에서 넘어온 견적이면 연결
+  deal_channel?: "direct" | "referral" | "partner";
+  partner_name?: string | null; // 파트너명(세금계산서 거래처) 또는 소개자
+  end_client_name?: string | null; // 실고객(건명)
 }
 
 /** KST 기준 날짜 문자열 */
@@ -136,6 +139,9 @@ export async function POST(req: NextRequest) {
         total_amount: totals.total,
         notes: quote.notes || null,
         lead_id: quote.lead_id ?? null,
+        deal_channel: quote.deal_channel ?? "direct",
+        partner_name: quote.partner_name ?? null,
+        end_client_name: quote.end_client_name ?? null,
       };
 
       if (quoteId) {
@@ -178,6 +184,7 @@ export async function POST(req: NextRequest) {
     const model: QuoteDocModel = {
       quoteNo: row!.quote_no as string,
       customerName: row!.customer_name as string,
+      endClientName: (row!.end_client_name as string | null) ?? null,
       customerContact: (row!.customer_contact as string | null) ?? null,
       quoteDate: row!.quote_date as string,
       validUntil: (row!.valid_until as string | null) ?? null,

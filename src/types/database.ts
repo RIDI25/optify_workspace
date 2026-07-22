@@ -14,6 +14,8 @@ export type ReportStatus = "draft" | "final";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type QuoteStatus = "draft" | "sent" | "won" | "expired";
 export type LeadStatus = "inquiry" | "consulting" | "quoted" | "won" | "lost";
+/** 거래 경로: 직접 / 소개 / 파트너(리드젠랩 등) 경유 — 라벨은 lib/deal-channels.ts */
+export type DealChannel = "direct" | "referral" | "partner";
 
 /** 현재 사용되는 채널 값(참고용). 하드코딩 강제 아님 — string 어디에도 대입 가능. */
 export const KNOWN_CHANNELS = ["naver_blog", "wordpress", "threads"] as const;
@@ -177,6 +179,9 @@ export interface Quote extends Timestamps {
   }[];
   lead_id: string | null;
   won_at: string | null;
+  deal_channel: DealChannel;
+  partner_name: string | null; // 파트너명(세금계산서 거래처) 또는 소개자명
+  end_client_name: string | null; // 실고객(건명) — 파트너 경유 시 구분용
   created_by: string | null;
   updated_at: string;
 }
@@ -194,6 +199,8 @@ export interface Lead extends Timestamps {
   next_followup: string | null;
   client_id: string | null;
   memo: string | null;
+  deal_channel: DealChannel;
+  partner_name: string | null;
   created_by: string | null;
   updated_at: string;
 }

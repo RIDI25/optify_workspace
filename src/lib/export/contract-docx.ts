@@ -60,7 +60,10 @@ export async function buildContractDocx(
       `${model.customerName}(이하 "갑")과 ${supplier.name}(이하 "을")은 아래 용역의 수행에 관하여 다음과 같이 계약을 체결한다.`,
       { after: 160 },
     ),
-    para(`용역명: 홈페이지 제작 및 SEO/GEO 최적화 용역 (견적번호 ${model.quoteNo})`, { bold: true }),
+    para(
+      `용역명: ${model.endClientName ? `[${model.endClientName}] ` : ""}홈페이지 제작 및 SEO/GEO 최적화 용역 (견적번호 ${model.quoteNo})`,
+      { bold: true },
+    ),
     para(`총 계약 금액: ${won(totals.total)} (공급가액 ${won(totals.supply)} · 부가세 ${won(totals.vat)})`, { bold: true }),
     para(
       `대금 지급: 계약금 ${won(deposit)} (${depositPct}%) · 잔금 ${won(balance)} (${100 - depositPct}%)` +

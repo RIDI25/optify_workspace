@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { dealGroupLabel } from "@/lib/deal-channels";
 import { won } from "@/lib/export/quote-model";
 import type { Quote, QuoteStatus } from "@/types/database";
 
@@ -128,7 +129,15 @@ export function QuoteList({
               {quotes.map((q) => (
                 <tr key={q.id} className="border-b border-border">
                   <td className="py-2 pr-3 font-mono text-xs text-ink">{q.quote_no}</td>
-                  <td className="py-2 pr-3 font-medium text-ink">{q.customer_name}</td>
+                  <td className="py-2 pr-3">
+                    <p className="font-medium text-ink">{q.customer_name}</p>
+                    <p className="text-[11px] text-muted">
+                      {q.deal_channel && q.deal_channel !== "direct"
+                        ? dealGroupLabel(q.deal_channel, q.partner_name)
+                        : ""}
+                      {q.end_client_name ? `${q.deal_channel !== "direct" ? " · " : ""}${q.end_client_name}` : ""}
+                    </p>
+                  </td>
                   <td className="py-2 pr-3 text-muted">{q.quote_date}</td>
                   <td className="py-2 pr-3 text-right font-mono">{won(q.total_amount)}</td>
                   <td className="py-2 pr-3">

@@ -66,6 +66,9 @@ export async function buildQuoteDocx(model: QuoteDocModel): Promise<Buffer> {
             margins: { top: 60, bottom: 60, left: 80, right: 80 },
             children: [
               new Paragraph({ children: [text(`${model.customerName} 귀중`, { bold: true })] }),
+              ...(model.endClientName
+                ? [new Paragraph({ children: [text(`건명: ${model.endClientName}`)] })]
+                : []),
               ...(model.customerContact
                 ? [new Paragraph({ children: [text(`담당자: ${model.customerContact}`)] })]
                 : []),

@@ -138,6 +138,12 @@ export async function renderInvoicePdf(
               <Text style={s.infoLabel}>고객사명</Text>
               <Text style={[s.infoValue, { fontWeight: "bold" }]}>{model.customerName} 귀중</Text>
             </View>
+            {model.endClientName && (
+              <View style={s.infoRow}>
+                <Text style={s.infoLabel}>건명</Text>
+                <Text style={s.infoValue}>{model.endClientName}</Text>
+              </View>
+            )}
             {model.customerContact && (
               <View style={s.infoRow}>
                 <Text style={s.infoLabel}>담당자</Text>

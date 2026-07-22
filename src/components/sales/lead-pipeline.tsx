@@ -4,8 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { convertLeadToClient } from "@/lib/actions/leads";
+import { DEAL_CHANNELS, dealGroupLabel } from "@/lib/deal-channels";
 import { won } from "@/lib/export/quote-model";
-import type { Lead, LeadStatus, Quote } from "@/types/database";
+import type { DealChannel, Lead, LeadStatus, Quote } from "@/types/database";
 
 const STATUS_LABELS: Record<LeadStatus, string> = {
   inquiry: "문의",
@@ -31,6 +32,8 @@ const EMPTY_FORM = {
   industry: "",
   region: "",
   source: "",
+  deal_channel: "direct" as DealChannel,
+  partner_name: "",
   next_followup: "",
   memo: "",
 };
@@ -72,6 +75,8 @@ export function LeadPipeline({
       industry: form.industry || null,
       region: form.region || null,
       source: form.source || null,
+      deal_channel: form.deal_channel,
+      partner_name: form.deal_channel === "direct" ? null : form.partner_name || null,
       next_followup: form.next_followup || null,
       memo: form.memo || null,
     });
@@ -147,9 +152,35 @@ export function LeadPipeline({
             <input value={form.industry} onChange={set("industry")} placeholder="업종 (병의원/법률/학원…)" className={input} />
             <input value={form.region} onChange={set("region")} placeholder="지역" className={input} />
             <input value={form.source} onChange={set("source")} placeholder="유입경로 (블로그/유튜브/소개…)" className={input} />
+            <select
+              value={form.deal_channel}
+              onChange={(e) => setForm((f) => ({ ...f, deal_channel: e.target.value as DealChannel }))}
+              className={input}
+              title="거래 구분"
+            >
+              {DEAL_CHANNELS.map((c) => (
+                <option key={c.value} value={c.value}>
+                  거래: {c.label}
+                </option>
+              ))}
+            </select>
+            {form.deal_channel !== "direct" && (
+              <input
+                value={form.partner_name}
+                onChange={set("partner_name")}
+                placeholder={form.deal_channel === "partner" ? "파트너명 (세금계산서 거래처)" : "소개자"}
+                list="partner-names"
+                className={input}
+              />
+            )}
             <input type="date" value={form.next_followup} onChange={set("next_followup")} title="다음 팔로업일" className={input} />
             <input value={form.memo} onChange={set("memo")} placeholder="메모" className={input} />
           </div>
+          <datalist id="partner-names">
+            {[...new Set(leads.map((l) => l.partner_name).filter(Boolean))].map((name) => (
+              <option key={name!} value={name!} />
+            ))}
+          </datalist>
           <button
             onClick={addLead}
             disabled={busy === "add"}
@@ -170,6 +201,7 @@ export function LeadPipeline({
             <thead>
               <tr className="border-b border-border text-left text-xs text-muted">
                 <th className="py-2 pr-3 font-medium">업체명</th>
+                <th className="py-2 pr-3 font-medium">구분</th>
                 <th className="py-2 pr-3 font-medium">업종·지역</th>
                 <th className="py-2 pr-3 font-medium">유입경로</th>
                 <th className="py-2 pr-3 font-medium">상태</th>
@@ -195,6 +227,20 @@ export function LeadPipeline({
                       <p className="text-xs text-muted">
                         {[lead.contact_name, lead.phone, lead.email].filter(Boolean).join(" · ")}
                       </p>
+                    </td>
+                    <td className="py-2 pr-3 align-middle">
+                      <span
+                        className={[
+                          "whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium",
+                          lead.deal_channel === "partner"
+                            ? "bg-blue-50 text-blue-700"
+                            : lead.deal_channel === "referral"
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-subtle text-muted",
+                        ].join(" ")}
+                      >
+                        {dealGroupLabel(lead.deal_channel, lead.partner_name)}
+                      </span>
                     </td>
                     <td className="py-2 pr-3 align-middle text-muted">
                       {[lead.industry, lead.region].filter(Boolean).join(" · ") || "-"}

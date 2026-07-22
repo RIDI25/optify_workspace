@@ -94,7 +94,10 @@ export async function renderContractPdf(
         <View style={s.overviewBox}>
           <View style={s.overviewRow}>
             <Text style={s.overviewLabel}>용역명</Text>
-            <Text>홈페이지 제작 및 SEO/GEO 최적화 용역 (견적번호 {model.quoteNo})</Text>
+            <Text>
+              {model.endClientName ? `[${model.endClientName}] ` : ""}홈페이지 제작 및 SEO/GEO
+              최적화 용역 (견적번호 {model.quoteNo})
+            </Text>
           </View>
           <View style={s.overviewRow}>
             <Text style={s.overviewLabel}>총 계약 금액</Text>

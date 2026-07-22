@@ -11,6 +11,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
+import { dealGroupLabel } from "@/lib/deal-channels";
 import { won } from "@/lib/export/quote-model";
 import type { Lead, Quote } from "@/types/database";
 import { LeadPipeline } from "@/components/sales/lead-pipeline";
@@ -82,6 +83,20 @@ export function SalesView() {
     0,
   );
   const progress = target > 0 ? Math.min(100, Math.round((monthWonSum / target) * 100)) : 0;
+
+  // 이번 달 수주를 거래 경로별로 집계 (파트너 경유는 파트너명으로 — 세금계산서 거래처 기준)
+  const monthWonQuotes = wonQuotes.filter((q) => wonMonth(q) === thisMonth);
+  const channelBreakdown = [
+    ...monthWonQuotes
+      .reduce((map, q) => {
+        const label = dealGroupLabel(q.deal_channel, q.partner_name);
+        const cur = map.get(label) ?? { amount: 0, count: 0 };
+        cur.amount += Number(q.total_amount);
+        cur.count += 1;
+        return map.set(label, cur);
+      }, new Map<string, { amount: number; count: number }>())
+      .entries(),
+  ].sort((a, b) => b[1].amount - a[1].amount);
 
   const chartData = Array.from({ length: 6 }, (_, i) => {
     const m = localMonth(i - 5);
@@ -160,6 +175,27 @@ export function SalesView() {
           </p>
         </div>
       </div>
+
+      {/* 이번 달 수주 구성 — 거래 경로별 */}
+      {channelBreakdown.length > 0 && (
+        <section className="rounded-lg border border-border bg-surface p-4">
+          <h2 className="mb-3 text-sm font-semibold text-ink">
+            이번 달 수주 구성{" "}
+            <span className="font-normal text-muted">
+              (파트너 경유는 파트너명 = 세금계산서 거래처 기준)
+            </span>
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {channelBreakdown.map(([label, v]) => (
+              <div key={label} className="rounded-md border border-border px-3 py-2 text-sm">
+                <span className="font-medium text-ink">{label}</span>{" "}
+                <span className="font-mono text-accent-deep">{won(v.amount)}</span>{" "}
+                <span className="text-xs text-muted">({v.count}건)</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* 월별 수주 추이 */}
       <section className="rounded-lg border border-border bg-surface p-4">
