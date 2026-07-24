@@ -10,6 +10,8 @@ const PRICING: Record<string, { input: number; output: number }> = {
  *  gemini-2.5-flash-image: 이미지당 1290 출력 토큰 × $30/1M ≈ $0.039 */
 const IMAGE_PRICING: Record<string, number> = {
   "gemini-2.5-flash-image": 0.039,
+  // gpt-image-1: 1024×1024 medium ≈ $0.042
+  "gpt-image-1": 0.042,
 };
 
 export function estimateCostUsd(

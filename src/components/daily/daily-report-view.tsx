@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { getChannel } from "@/lib/channels";
 import { addTopicToPlan, saveKeywordToPool } from "@/lib/actions/keywords";
+import { CardnewsPanel } from "@/components/daily/cardnews-panel";
 import type { ChannelSettings } from "@/types/database";
 import type { CollectResult } from "@/lib/daily-report/collect";
 import type { DailyReportContent, DailyReportRow } from "@/types/daily-report";
@@ -339,6 +340,9 @@ export function DailyReportView() {
               ))}
             </ol>
           </section>
+
+          {/* 카드뉴스 생성 */}
+          <CardnewsPanel reportDate={viewDate} />
 
           {/* ② 주요 소식 상세 */}
           <section className="space-y-3">
