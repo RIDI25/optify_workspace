@@ -143,9 +143,9 @@ async function composeCard(
         y += 60;
       }
     }
-    ctx.fillStyle = DEEP;
-    ctx.font = `bold 34px ${FONT}`;
-    ctx.fillText("매일 아침, 검색·AI 마케팅 소식 — 옵티파이", 76, H - 200);
+    ctx.fillStyle = MUTED;
+    ctx.font = `28px ${FONT}`;
+    ctx.fillText("옵티파이 데일리 인사이트", 76, H - 200);
   } else {
     ctx.fillStyle = INK;
     ctx.font = `bold 58px ${FONT}`;
