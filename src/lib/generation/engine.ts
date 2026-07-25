@@ -1,6 +1,7 @@
 import { brandRulesBlock } from "@/lib/generation/brand-rules";
 import { businessContextBlock } from "@/lib/generation/business-context";
 import { KOREAN_STYLE_BLOCK, channelDivergenceBlock } from "@/lib/generation/korean-style";
+import { HARVARD_5_BLOCK, usesHarvardStructure } from "@/lib/generation/writing-structure";
 import { naverCategoryPromptBlock } from "@/lib/naver-categories";
 
 export interface GenerateInput {
@@ -85,6 +86,8 @@ export function buildSystemPrompt(input: GenerateInput): string {
     if (t) parts.push(t);
   }
 
+  if (usesHarvardStructure(input.channel)) parts.push(HARVARD_5_BLOCK);
+
   parts.push(
     [
       "[출력 규칙]",
@@ -156,6 +159,7 @@ export function buildWordpressJsonPrompt(input: {
     input.isInternalClient ? businessContextBlock() : "",
     "당신은 옵티파이(검색 마케팅 회사)의 워드프레스 SEO 블로그 작가입니다. 아래 채널 프리셋을 철저히 준수하세요.",
     renderPreset(input.preset),
+    HARVARD_5_BLOCK,
     KOREAN_STYLE_BLOCK,
     channelDivergenceBlock("wordpress"),
     [
