@@ -211,6 +211,27 @@ export interface AppSetting {
   updated_at: string;
 }
 
+export type TaxInvoiceStatus = "issued" | "paid" | "cancelled";
+
+/** 세금계산서 발행 이력 (수기 입력) — /revenue 매출 대시보드 데이터 소스 */
+export interface TaxInvoice extends Timestamps {
+  id: string;
+  issue_date: string;
+  counterparty: string; // 세금계산서 상 거래처
+  end_client_name: string | null; // 실고객(건명)
+  description: string | null;
+  supply_amount: number;
+  vat_amount: number;
+  total_amount: number;
+  deal_channel: DealChannel;
+  quote_id: string | null;
+  status: TaxInvoiceStatus;
+  paid_at: string | null;
+  memo: string | null;
+  created_by: string | null;
+  updated_at: string;
+}
+
 export interface SeoDiagnosis extends Timestamps {
   id: string;
   url: string;
@@ -265,6 +286,7 @@ export interface Database {
       leads: TableShape<Lead>;
       app_settings: TableShape<AppSetting>;
       seo_diagnoses: TableShape<SeoDiagnosis>;
+      tax_invoices: TableShape<TaxInvoice>;
       api_usage_logs: TableShape<ApiUsageLog>;
     };
     Views: Record<string, never>;
