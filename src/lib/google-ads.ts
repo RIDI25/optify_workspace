@@ -68,6 +68,61 @@ interface IdeaRow {
   } | null;
 }
 
+interface HistoricalRow {
+  text?: string | null;
+  keyword_metrics?: IdeaRow["keyword_idea_metrics"];
+}
+
+/**
+ * Google Ads Keyword Planner — 입력한 키워드 '그대로'의 검색 지표 조회 (연관 확장 없음).
+ * 대량 키워드 조회용. 응답에 없는 키워드는 결과에서 빠질 수 있다.
+ */
+export async function generateKeywordHistoricalMetrics(
+  keywords: string[],
+): Promise<KeywordIdea[]> {
+  const client = new GoogleAdsApi({
+    client_id: process.env.GOOGLE_ADS_CLIENT_ID!,
+    client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET!,
+    developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN!,
+  });
+  const customer = client.Customer({
+    customer_id: process.env.GOOGLE_ADS_CUSTOMER_ID!,
+    refresh_token: process.env.GOOGLE_ADS_REFRESH_TOKEN!,
+  });
+
+  const request = {
+    customer_id: process.env.GOOGLE_ADS_CUSTOMER_ID!,
+    language: KOREAN_LANG,
+    geo_target_constants: [KOREA_GEO],
+    keyword_plan_network: enums.KeywordPlanNetwork.GOOGLE_SEARCH_AND_PARTNERS,
+    keywords: keywords.map((k) => k.trim()).filter(Boolean),
+  };
+
+  const response = await customer.keywordPlanIdeas.generateKeywordHistoricalMetrics(
+    request as Parameters<
+      typeof customer.keywordPlanIdeas.generateKeywordHistoricalMetrics
+    >[0],
+  );
+  // 라이브러리 버전에 따라 배열 직접 반환 또는 {results} 래핑 — 둘 다 수용
+  const rows = (Array.isArray(response)
+    ? response
+    : ((response as { results?: HistoricalRow[] }).results ?? [])) as HistoricalRow[];
+
+  return rows.map((row) => {
+    const m = row.keyword_metrics;
+    return {
+      keyword: row.text ?? "",
+      avgMonthlySearches:
+        m?.avg_monthly_searches != null ? Number(m.avg_monthly_searches) : null,
+      competition: competitionName(m?.competition),
+      competitionIndex:
+        m?.competition_index != null ? Number(m.competition_index) : null,
+      cpcLow: fromMicros(m?.low_top_of_page_bid_micros),
+      cpcHigh: fromMicros(m?.high_top_of_page_bid_micros),
+    };
+  });
+}
+
 /** Google Ads Keyword Planner — 시드 키워드로 연관 키워드 아이디어 조회 */
 export async function generateKeywordIdeas(
   seeds: string[],

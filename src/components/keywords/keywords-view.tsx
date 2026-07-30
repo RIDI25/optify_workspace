@@ -7,9 +7,10 @@ import { useClientContext } from "@/components/providers/client-context";
 import { getChannel } from "@/lib/channels";
 import { addTopicToPlan } from "@/lib/actions/keywords";
 import { KeywordReportView } from "@/components/keywords/keyword-report";
+import { BulkKeywordView } from "@/components/keywords/bulk-keyword-view";
 import type { ChannelSettings, Keyword } from "@/types/database";
 
-type Tab = "report" | "pool";
+type Tab = "report" | "bulk" | "pool";
 
 const SOURCE_LABELS: Record<string, string> = {
   naver_ads: "네이버",
@@ -153,7 +154,7 @@ export function KeywordsView() {
       </div>
 
       <div className="flex gap-2 border-b border-border">
-        {(["report", "pool"] as Tab[]).map((t) => (
+        {(["report", "bulk", "pool"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -164,12 +165,18 @@ export function KeywordsView() {
                 : "text-muted",
             ].join(" ")}
           >
-            {t === "report" ? "📊 키워드 리포트" : "⭐ 키워드 보관함"}
+            {t === "report"
+              ? "📊 키워드 리포트"
+              : t === "bulk"
+                ? "🔍 대량 조회"
+                : "⭐ 키워드 보관함"}
           </button>
         ))}
       </div>
 
       {tab === "report" && <KeywordReportView />}
+
+      {tab === "bulk" && <BulkKeywordView />}
 
       {tab === "pool" && (
         <div className="space-y-4">

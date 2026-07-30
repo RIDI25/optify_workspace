@@ -50,6 +50,34 @@ async function callKeywordstool(hints: string[]): Promise<Response> {
 }
 
 /**
+ * 입력 키워드 '그대로'의 네이버 지표만 조회 (연관 확장 없음) — 대량 키워드 조회용.
+ * hintKeywords 5개 제한 → 5개씩 배치 순차 호출(429 회피), 응답에서 정확 일치만 필터.
+ */
+export async function fetchNaverKeywordMetrics(
+  keywords: string[],
+): Promise<NaverKeywordIdea[]> {
+  const targets = keywords.map((k) => k.trim()).filter(Boolean);
+  if (!targets.length) return [];
+  // 네이버는 힌트의 공백을 제거하므로 동일 규칙으로 매칭
+  const norm = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+  const wanted = new Map(targets.map((k) => [norm(k), k]));
+
+  const out: NaverKeywordIdea[] = [];
+  for (let i = 0; i < targets.length; i += 5) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 700)); // 연속 호출 간격
+    const batch = targets.slice(i, i + 5);
+    const ideas = await fetchNaverKeywordIdeas(batch);
+    for (const idea of ideas) {
+      const original = wanted.get(norm(idea.keyword));
+      if (original && !out.some((x) => norm(x.keyword) === norm(idea.keyword))) {
+        out.push({ ...idea, keyword: original }); // 입력 표기(공백 포함) 유지
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * 네이버 검색광고 키워드도구 — 연관 키워드 + 월간 검색량/클릭률/경쟁정도.
  * hintKeywords 최대 5개. 429 시 백오프 재시도 1회.
  */
