@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAnthropic, GENERATION_MODEL } from "@/lib/anthropic";
+import {
+  createAnthropic,
+  GENERATION_MODEL,
+  GENERATION_BETAS,
+  GENERATION_FALLBACKS,
+} from "@/lib/anthropic";
 import { buildSystemPrompt, buildUserPrompt } from "@/lib/generation/engine";
 import { logApiUsage } from "@/lib/usage";
 import { approvalFieldsForCreator } from "@/lib/approval";
@@ -94,8 +99,10 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        const ms = anthropic.messages.stream({
+        const ms = anthropic.beta.messages.stream({
           model: GENERATION_MODEL,
+          betas: GENERATION_BETAS,
+          fallbacks: GENERATION_FALLBACKS,
           max_tokens: maxTokens,
           system,
           messages: [{ role: "user", content: userPrompt }],
@@ -144,6 +151,8 @@ export async function POST(req: NextRequest) {
             title: body.topic.trim().slice(0, 120),
             body: fullText,
             model: GENERATION_MODEL,
+            betas: GENERATION_BETAS,
+            fallbacks: GENERATION_FALLBACKS,
             input_tokens: meta.inputTokens,
             output_tokens: meta.outputTokens,
             created_by: user.id,

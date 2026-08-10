@@ -1,6 +1,11 @@
 /** 데일리 리포트 AI 생성 — 수동(버튼)·자동(cron) 공용 */
 
-import { createAnthropic, GENERATION_MODEL } from "@/lib/anthropic";
+import {
+  createAnthropic,
+  GENERATION_MODEL,
+  GENERATION_BETAS,
+  GENERATION_FALLBACKS,
+} from "@/lib/anthropic";
 import { robustJsonParse } from "@/lib/generation/json";
 import type { CollectResult } from "@/lib/daily-report/collect";
 import type { DailyReportContent } from "@/types/daily-report";
@@ -61,9 +66,11 @@ export async function generateDailyReportContent(
   ].join("\n");
 
   const anthropic = createAnthropic();
-  const msg = await anthropic.messages
+  const msg = await anthropic.beta.messages
     .stream({
       model: GENERATION_MODEL,
+      betas: GENERATION_BETAS,
+      fallbacks: GENERATION_FALLBACKS,
       max_tokens: 4000,
       system: SYSTEM,
       messages: [{ role: "user", content: userMsg }],

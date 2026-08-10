@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAnthropic, GENERATION_MODEL } from "@/lib/anthropic";
+import {
+  createAnthropic,
+  GENERATION_MODEL,
+  GENERATION_BETAS,
+  GENERATION_FALLBACKS,
+} from "@/lib/anthropic";
 import { KOREAN_STYLE_BLOCK } from "@/lib/generation/korean-style";
 import { logApiUsage } from "@/lib/usage";
 import type { DiagnosisResult } from "@/lib/seo-audit/types";
@@ -64,8 +69,10 @@ export async function POST(req: NextRequest) {
     }`;
 
     const anthropic = createAnthropic();
-    const res = await anthropic.messages.create({
+    const res = await anthropic.beta.messages.create({
       model: GENERATION_MODEL,
+      betas: GENERATION_BETAS,
+      fallbacks: GENERATION_FALLBACKS,
       max_tokens: 1500,
       system,
       messages: [{ role: "user", content: userMsg }],
