@@ -26,28 +26,41 @@ export function ClientTabs() {
   if (!isContent || loading || clients.length === 0) return null;
 
   return (
-    <div className="border-b border-border bg-surface px-4 md:px-6">
-      <div className="flex items-center gap-1 overflow-x-auto py-1.5">
+    <div className="border-b-2 border-accent-deep/20 bg-tint/30 px-4 md:px-6">
+      <div className="flex items-center gap-2 overflow-x-auto py-2">
         <span className="mr-1 shrink-0 text-[11px] font-medium uppercase tracking-wide text-muted">
           클라이언트
         </span>
-        {clients.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setSelectedClientId(c.id)}
-            className={[
-              "shrink-0 rounded-md px-3 py-1 text-sm font-medium transition-colors",
-              c.id === selectedClientId
-                ? "bg-tint text-accent-deep"
-                : "text-muted hover:bg-subtle hover:text-ink",
-            ].join(" ")}
-          >
-            {c.name}
-            {c.is_internal && (
-              <span className="ml-1 text-[10px] text-muted">내부</span>
-            )}
-          </button>
-        ))}
+        {clients.map((c) => {
+          const active = c.id === selectedClientId;
+          return (
+            <button
+              key={c.id}
+              onClick={() => setSelectedClientId(c.id)}
+              className={[
+                "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm transition-all",
+                active
+                  ? "bg-accent-deep font-bold text-white shadow-sm"
+                  : "border border-border bg-surface font-medium text-muted hover:border-accent-deep/40 hover:text-ink",
+              ].join(" ")}
+            >
+              {active && (
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+              )}
+              {c.name}
+              {c.is_internal && (
+                <span
+                  className={[
+                    "rounded px-1 py-px text-[10px] font-medium",
+                    active ? "bg-white/20 text-white" : "bg-subtle text-muted",
+                  ].join(" ")}
+                >
+                  내부
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
