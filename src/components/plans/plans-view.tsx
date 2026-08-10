@@ -13,6 +13,7 @@ import { useClientContext } from "@/components/providers/client-context";
 import { CHANNELS, getChannel, channelLabel } from "@/lib/channels";
 import { PLAN_STATUSES, planStatusLabel } from "@/lib/plan-status";
 import { PlanTools } from "@/components/plans/plan-tools";
+import { ServiceBanner } from "@/components/layout/service-banner";
 import {
   deletePlan,
   approveContent,
@@ -293,6 +294,8 @@ export function PlansView() {
           </div>
         </div>
       </div>
+
+      <ServiceBanner />
 
       <PlanTools onCreated={() => setReloadKey((k) => k + 1)} />
 

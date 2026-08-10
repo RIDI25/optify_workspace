@@ -232,6 +232,24 @@ export interface TaxInvoice extends Timestamps {
   updated_at: string;
 }
 
+export type ServiceStatus = "active" | "done" | "paused" | "ended";
+
+/** 고객사 계약 서비스 — 업무 플로우 구분 기준. service_type은 lib/services.ts 레지스트리 키 */
+export interface ClientService extends Timestamps {
+  id: string;
+  client_id: string;
+  service_type: string;
+  billing: "one_time" | "period";
+  status: ServiceStatus;
+  start_date: string | null;
+  end_date: string | null;
+  amount: number | null;
+  monthly_fee: number | null;
+  quote_id: string | null;
+  memo: string | null;
+  updated_at: string;
+}
+
 export type PaymentKind = "deposit" | "balance" | "full" | "other";
 
 /** 인보이스별 입금 내역 — 선금/잔금 분할 입금 기록 */
@@ -300,6 +318,7 @@ export interface Database {
       seo_diagnoses: TableShape<SeoDiagnosis>;
       tax_invoices: TableShape<TaxInvoice>;
       invoice_payments: TableShape<InvoicePayment>;
+      client_services: TableShape<ClientService>;
       api_usage_logs: TableShape<ApiUsageLog>;
     };
     Views: Record<string, never>;

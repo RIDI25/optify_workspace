@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
+import { ServiceBanner } from "@/components/layout/service-banner";
 import { getChannel, THREADS_CONTENT_TYPES } from "@/lib/channels";
 import {
   NAVER_CATEGORIES,
@@ -149,6 +150,8 @@ export function GenerateView() {
           {selectedClient?.name} · 프리셋 기반 통합 생성 엔진
         </p>
       </div>
+
+      <ServiceBanner />
 
       {/* 채널 탭 */}
       <div className="flex flex-wrap gap-2">

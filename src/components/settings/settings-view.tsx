@@ -15,6 +15,7 @@ import {
   toggleOnboardingTask,
 } from "@/lib/actions/onboarding";
 import { DEFAULT_ONBOARDING_TASKS, autoDoneKeys } from "@/lib/onboarding";
+import { ClientServicesSection } from "@/components/settings/client-services";
 import type { Client, ChannelSettings, Profile, Role } from "@/types/database";
 
 interface OnboardingTask {
@@ -95,6 +96,15 @@ export function SettingsView({ role }: { role: Role }) {
             )}
           </h1>
         </div>
+
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-ink">계약 서비스</h2>
+          <ClientServicesSection
+            key={activeClient.id}
+            clientId={activeClient.id}
+            readOnly={!isOwner}
+          />
+        </section>
 
         <section className="space-y-2">
           <h2 className="text-sm font-bold text-ink">기본 정보 · 온보딩</h2>

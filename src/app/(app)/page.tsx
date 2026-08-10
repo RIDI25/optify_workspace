@@ -4,7 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { channelLabel } from "@/lib/channels";
 import { planStatusLabel } from "@/lib/plan-status";
 import { autoDoneKeys } from "@/lib/onboarding";
-import type { Client, Content, ContentPlan, ApiUsageLog } from "@/types/database";
+import { daysUntilEnd, getService, serviceLabel } from "@/lib/services";
+import type {
+  Client,
+  ClientService,
+  Content,
+  ContentPlan,
+  ApiUsageLog,
+} from "@/types/database";
 
 function ymd(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -38,6 +45,10 @@ export default async function DashboardPage() {
   const onboardingRes = supabase
     .from("client_onboarding_tasks")
     .select("client_id, task_key, done");
+  const servicesRes = supabase
+    .from("client_services")
+    .select("*")
+    .in("status", ["active", "paused"]);
   const csRes = supabase
     .from("channel_settings")
     .select("client_id, channel, wp_app_password_encrypted");
@@ -116,11 +127,19 @@ export default async function DashboardPage() {
       : 0;
 
   // 온보딩 진행중 클라이언트 (is_internal 제외) [A-2]
-  const [onboarding, cs, kws] = await Promise.all([
+  const [onboarding, cs, kws, svcRes] = await Promise.all([
     onboardingRes,
     csRes,
     kwRes,
+    servicesRes,
   ]);
+  const allServices = (svcRes.data ?? []) as ClientService[];
+  // 기간제 계약 만료 임박 (30일 이내, 진행중)
+  const expiring = allServices.filter((s) => {
+    if (s.status !== "active" || s.billing !== "period") return false;
+    const days = daysUntilEnd(s.end_date);
+    return days != null && days <= 30;
+  });
   const tasksAll = (onboarding.data ?? []) as {
     client_id: string;
     task_key: string;
@@ -240,6 +259,28 @@ export default async function DashboardPage() {
         </Link>
       )}
 
+      {/* 계약 만료 임박 (owner) — 재계약 영업 타이밍 */}
+      {profile.role === "owner" && expiring.length > 0 && (
+        <Link
+          href="/settings"
+          className="block rounded-lg border border-amber-300 bg-amber-50 p-4 hover:bg-amber-100"
+        >
+          <p className="text-sm font-semibold text-amber-700">
+            계약 만료 임박 {expiring.length}건 (30일 이내)
+          </p>
+          <p className="mt-0.5 text-xs text-muted">
+            {expiring
+              .slice(0, 3)
+              .map((s) => {
+                const days = daysUntilEnd(s.end_date);
+                return `${clientName(s.client_id)} · ${serviceLabel(s.service_type)} ${days != null && days >= 0 ? `D-${days}` : "만료"}`;
+              })
+              .join("  |  ")}
+            {expiring.length > 3 ? ` 외 ${expiring.length - 3}건` : ""} — 재계약을 논의하세요.
+          </p>
+        </Link>
+      )}
+
       {/* 온보딩 진행중 클라이언트 [A-2] */}
       {onboardingClients.length > 0 && (
         <section className="rounded-lg border border-border bg-surface p-4">
@@ -316,15 +357,41 @@ export default async function DashboardPage() {
           클라이언트별 이번 달 생성 / 발행
         </h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {perClient.map((c) => (
-            <div key={c.id} className="rounded-md border border-border p-3">
-              <p className="text-sm font-medium text-ink">{c.name}</p>
-              <p className="mt-1 text-sm text-muted">
-                생성 <span className="font-mono text-ink">{c.generated}</span> ·
-                발행 <span className="font-mono text-ink">{c.published}</span>
-              </p>
-            </div>
-          ))}
+          {perClient.map((c) => {
+            const clientSvcs = allServices.filter(
+              (s) => s.client_id === c.id && s.status === "active",
+            );
+            return (
+              <div key={c.id} className="rounded-md border border-border p-3">
+                <p className="text-sm font-medium text-ink">{c.name}</p>
+                <p className="mt-1 text-sm text-muted">
+                  생성 <span className="font-mono text-ink">{c.generated}</span> ·
+                  발행 <span className="font-mono text-ink">{c.published}</span>
+                </p>
+                {clientSvcs.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {clientSvcs.map((s) => {
+                      const days = s.billing === "period" ? daysUntilEnd(s.end_date) : null;
+                      return (
+                        <span
+                          key={s.id}
+                          className={[
+                            "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                            days != null && days <= 30
+                              ? "bg-amber-50 text-amber-700"
+                              : "bg-tint text-accent-deep",
+                          ].join(" ")}
+                        >
+                          {getService(s.service_type)?.emoji} {serviceLabel(s.service_type)}
+                          {days != null && ` D-${Math.max(0, days)}`}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {perClient.length === 0 && (
             <p className="text-sm text-muted">클라이언트가 없습니다.</p>
           )}
