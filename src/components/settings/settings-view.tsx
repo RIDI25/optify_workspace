@@ -24,11 +24,11 @@ interface OnboardingTask {
   done: boolean;
 }
 
-type Tab = "clients" | "presets" | "wordpress" | "team" | "usage";
-
 export function SettingsView({ role }: { role: Role }) {
   const isOwner = role === "owner";
-  const [tab, setTab] = useState<Tab>("clients");
+  /** null = 고객사 목록, 값 = 해당 고객사 상세 설정 */
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
   const [clients, setClients] = useState<Client[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [usage, setUsage] = useState<
@@ -73,6 +73,53 @@ export function SettingsView({ role }: { role: Role }) {
       });
   }, []);
 
+  const activeClient = clients.find((c) => c.id === activeId) ?? null;
+
+  // ── 상세: 선택한 고객사의 기본정보·프리셋·워드프레스 ──────
+  if (activeClient) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-5">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setActiveId(null)}
+            className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-subtle"
+          >
+            ← 고객사 목록
+          </button>
+          <h1 className="text-xl font-bold text-ink">
+            {activeClient.name}
+            {activeClient.is_internal && (
+              <span className="ml-2 rounded bg-tint px-1.5 py-0.5 text-xs font-medium text-accent-deep">
+                내부
+              </span>
+            )}
+          </h1>
+        </div>
+
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-ink">기본 정보 · 온보딩</h2>
+          <ClientCard client={activeClient} readOnly={!isOwner} onSaved={reload} />
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-ink">채널 프리셋</h2>
+          <PresetsTab
+            key={activeClient.id}
+            clients={[activeClient]}
+            profiles={profiles}
+            readOnly={!isOwner}
+          />
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="text-sm font-bold text-ink">워드프레스 연결</h2>
+          <WordpressTab key={activeClient.id} clients={[activeClient]} readOnly={!isOwner} />
+        </section>
+      </div>
+    );
+  }
+
+  // ── 목록: 고객사 선택 + 팀원·API 사용량 ───────────────────
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div>
@@ -84,41 +131,68 @@ export function SettingsView({ role }: { role: Role }) {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 border-b border-border">
-        {(
-          [
-            ["clients", "클라이언트"],
-            ["presets", "채널 프리셋"],
-            ["wordpress", "워드프레스"],
-            ["team", "팀원"],
-            ["usage", "API 사용량"],
-          ] as [Tab, string][]
-        ).map(([t, label]) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={[
-              "px-3 py-2 text-sm font-medium",
-              tab === t
-                ? "border-b-2 border-accent-deep text-accent-deep"
-                : "text-muted",
-            ].join(" ")}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* 고객사 목록 — 옵티파이(내부)가 최상단 */}
+      <section className="space-y-2">
+        <h2 className="text-sm font-bold text-ink">고객사 목록</h2>
+        <div className="overflow-hidden rounded-lg border border-border">
+          {clients.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setActiveId(c.id)}
+              className="flex w-full items-center justify-between border-b border-border bg-surface px-4 py-3 text-left last:border-b-0 hover:bg-tint/40"
+            >
+              <span className="flex items-center gap-2">
+                <span className="text-sm font-medium text-ink">{c.name}</span>
+                {c.is_internal && (
+                  <span className="rounded bg-tint px-1.5 py-0.5 text-[11px] font-medium text-accent-deep">
+                    내부
+                  </span>
+                )}
+                <span
+                  className={[
+                    "rounded px-1.5 py-0.5 text-[11px]",
+                    c.status === "active"
+                      ? "bg-subtle text-muted"
+                      : "bg-amber-50 text-amber-700",
+                  ].join(" ")}
+                >
+                  {c.status === "active" ? "운영중" : c.status === "paused" ? "일시중지" : "종료"}
+                </span>
+              </span>
+              <span className="text-muted">→</span>
+            </button>
+          ))}
+          {clients.length === 0 && (
+            <p className="px-4 py-6 text-center text-sm text-muted">고객사가 없습니다.</p>
+          )}
+        </div>
+        {isOwner && (
+          <div className="flex gap-2 rounded-lg border border-dashed border-border p-3">
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="새 고객사 이름"
+              className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
+            />
+            <button
+              onClick={async () => {
+                if (!newName.trim()) return;
+                const r = await saveClient(null, { name: newName.trim() });
+                if (r.ok) {
+                  setNewName("");
+                  reload();
+                }
+              }}
+              className="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-ink hover:opacity-90"
+            >
+              추가
+            </button>
+          </div>
+        )}
+      </section>
 
-      {tab === "clients" && (
-        <ClientsTab clients={clients} readOnly={!isOwner} onSaved={reload} />
-      )}
-      {tab === "presets" && (
-        <PresetsTab clients={clients} profiles={profiles} readOnly={!isOwner} />
-      )}
-      {tab === "wordpress" && (
-        <WordpressTab clients={clients} readOnly={!isOwner} />
-      )}
-      {tab === "team" && (
+      <section className="space-y-2">
+        <h2 className="text-sm font-bold text-ink">팀원</h2>
         <div className="overflow-hidden rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead className="bg-subtle text-left text-xs text-muted">
@@ -139,8 +213,10 @@ export function SettingsView({ role }: { role: Role }) {
             </tbody>
           </table>
         </div>
-      )}
-      {tab === "usage" && (
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-bold text-ink">API 사용량 (이번 달)</h2>
         <div className="overflow-hidden rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead className="bg-subtle text-left text-xs text-muted">
@@ -170,49 +246,7 @@ export function SettingsView({ role }: { role: Role }) {
             </tbody>
           </table>
         </div>
-      )}
-    </div>
-  );
-}
-
-function ClientsTab({
-  clients,
-  readOnly,
-  onSaved,
-}: {
-  clients: Client[];
-  readOnly: boolean;
-  onSaved: () => void;
-}) {
-  const [newName, setNewName] = useState("");
-  return (
-    <div className="space-y-4">
-      {clients.map((c) => (
-        <ClientCard key={c.id} client={c} readOnly={readOnly} onSaved={onSaved} />
-      ))}
-      {!readOnly && (
-        <div className="flex gap-2 rounded-lg border border-dashed border-border p-4">
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="새 클라이언트 이름"
-            className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
-          />
-          <button
-            onClick={async () => {
-              if (!newName.trim()) return;
-              const r = await saveClient(null, { name: newName.trim() });
-              if (r.ok) {
-                setNewName("");
-                onSaved();
-              }
-            }}
-            className="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-ink hover:opacity-90"
-          >
-            추가
-          </button>
-        </div>
-      )}
+      </section>
     </div>
   );
 }
