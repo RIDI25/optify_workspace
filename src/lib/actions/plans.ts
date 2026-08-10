@@ -1,0 +1,68 @@
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+
+/**
+ * 월간 플랜 일괄 생성 — 키워드를 풀에 연결(기존 재사용, 없으면 생성)하고
+ * 발행 예정일이 배정된 content_plans를 한 번에 만든다.
+ * 채널 기본 담당자(channel_settings.default_assignee) 자동 배정.
+ */
+export async function createBulkPlans(input: {
+  clientId: string;
+  channel: string;
+  items: { keyword: string; title: string; date: string }[];
+}): Promise<{ ok: boolean; count: number; error?: string }> {
+  const supabase = await createClient();
+  if (!input.items.length) return { ok: false, count: 0, error: "생성할 항목이 없습니다." };
+
+  const { data: cs } = await supabase
+    .from("channel_settings")
+    .select("default_assignee")
+    .eq("client_id", input.clientId)
+    .eq("channel", input.channel)
+    .maybeSingle();
+
+  // 키워드 풀 연결: 기존 키워드 재사용, 없으면 planned로 생성
+  const uniqueKeywords = [...new Set(input.items.map((i) => i.keyword.trim()).filter(Boolean))];
+  const { data: existing } = await supabase
+    .from("keywords")
+    .select("id, keyword")
+    .eq("client_id", input.clientId)
+    .in("keyword", uniqueKeywords);
+  const keywordIds = new Map(
+    ((existing ?? []) as { id: string; keyword: string }[]).map((k) => [k.keyword, k.id]),
+  );
+
+  const missing = uniqueKeywords.filter((k) => !keywordIds.has(k));
+  if (missing.length) {
+    const { data: inserted, error: kwErr } = await supabase
+      .from("keywords")
+      .insert(
+        missing.map((keyword) => ({
+          client_id: input.clientId,
+          keyword,
+          source: "manual",
+          status: "planned",
+        })),
+      )
+      .select("id, keyword");
+    if (kwErr) return { ok: false, count: 0, error: kwErr.message };
+    for (const k of (inserted ?? []) as { id: string; keyword: string }[]) {
+      keywordIds.set(k.keyword, k.id);
+    }
+  }
+
+  const { error: planErr } = await supabase.from("content_plans").insert(
+    input.items.map((item) => ({
+      client_id: input.clientId,
+      keyword_id: keywordIds.get(item.keyword.trim()) ?? null,
+      title: item.title,
+      channel: input.channel,
+      status: "idea",
+      scheduled_date: item.date,
+      assignee: cs?.default_assignee ?? null,
+    })),
+  );
+  if (planErr) return { ok: false, count: 0, error: planErr.message };
+  return { ok: true, count: input.items.length };
+}

@@ -13,8 +13,17 @@ import {
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
 import { DEAL_CHANNELS } from "@/lib/deal-channels";
+import { DEPOSIT_RATE } from "@/lib/quote-config";
 import { won } from "@/lib/export/quote-model";
 import type { DealChannel, Quote, TaxInvoice, TaxInvoiceStatus } from "@/types/database";
+
+/** 견적 프리필 시 청구 단계 — 보통 계약금 선입금 후 잔금 청구 */
+type InvoiceStage = "full" | "deposit" | "balance";
+const STAGE_LABELS: Record<InvoiceStage, string> = {
+  full: "전액",
+  deposit: `계약금 ${Math.round(DEPOSIT_RATE * 100)}%`,
+  balance: `잔금 ${100 - Math.round(DEPOSIT_RATE * 100)}%`,
+};
 
 const input =
   "rounded-md border border-border bg-surface px-3 py-1.5 text-sm outline-none focus:border-accent-deep";
@@ -56,6 +65,7 @@ export function RevenueView() {
   const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
   const [wonQuotes, setWonQuotes] = useState<Quote[]>([]);
   const [form, setForm] = useState({ ...EMPTY_FORM, issue_date: localDate() });
+  const [invoiceStage, setInvoiceStage] = useState<InvoiceStage>("full");
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(true);
@@ -94,21 +104,25 @@ export function RevenueView() {
     }));
   }
 
-  /** 수주 견적 선택 → 거래처·건명·금액 프리필 */
-  function prefillFromQuote(quoteId: string) {
+  /** 수주 견적 선택 → 거래처·건명·금액 프리필 (청구 단계별 금액 계산) */
+  function prefillFromQuote(quoteId: string, stage: InvoiceStage = invoiceStage) {
     setForm((f) => ({ ...f, quote_id: quoteId }));
     const q = wonQuotes.find((x) => x.id === quoteId);
     if (!q) return;
+    const rate = stage === "full" ? 1 : stage === "deposit" ? DEPOSIT_RATE : 1 - DEPOSIT_RATE;
+    const stageSupply = Math.round(Number(q.supply_amount) * rate);
+    const stageVat = Math.round(stageSupply * 0.1);
     const firstItem = q.items[0]?.name ?? "용역";
+    const baseDesc = q.items.length > 1 ? `${firstItem} 외 ${q.items.length - 1}건` : firstItem;
     setForm((f) => ({
       ...f,
       quote_id: quoteId,
       counterparty: q.customer_name,
       end_client_name: q.end_client_name ?? "",
       deal_channel: q.deal_channel ?? "direct",
-      description: q.items.length > 1 ? `${firstItem} 외 ${q.items.length - 1}건` : firstItem,
-      supply_amount: String(q.supply_amount),
-      vat_amount: String(q.vat_amount),
+      description: stage === "full" ? baseDesc : `${baseDesc} (${STAGE_LABELS[stage]})`,
+      supply_amount: String(stageSupply),
+      vat_amount: String(stageVat),
     }));
   }
 
@@ -308,18 +322,36 @@ export function RevenueView() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-bold text-ink">세금계산서 발행 입력</h2>
           {wonQuotes.length > 0 && (
-            <select
-              value={form.quote_id}
-              onChange={(e) => prefillFromQuote(e.target.value)}
-              className={input}
-            >
-              <option value="">수주 견적에서 불러오기 (선택)</option>
-              {wonQuotes.map((q) => (
-                <option key={q.id} value={q.id}>
-                  {q.quote_no} · {q.customer_name} · {won(Number(q.total_amount))}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                value={invoiceStage}
+                onChange={(e) => {
+                  const stage = e.target.value as InvoiceStage;
+                  setInvoiceStage(stage);
+                  if (form.quote_id) prefillFromQuote(form.quote_id, stage);
+                }}
+                className={input}
+                title="청구 단계 — 보통 계약금 선입금 후 잔금 청구"
+              >
+                {Object.entries(STAGE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={form.quote_id}
+                onChange={(e) => prefillFromQuote(e.target.value)}
+                className={input}
+              >
+                <option value="">수주 견적에서 불러오기 (선택)</option>
+                {wonQuotes.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.quote_no} · {q.customer_name} · {won(Number(q.total_amount))}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

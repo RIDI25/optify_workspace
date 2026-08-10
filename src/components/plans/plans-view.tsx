@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { CHANNELS, getChannel, channelLabel } from "@/lib/channels";
 import { PLAN_STATUSES, planStatusLabel } from "@/lib/plan-status";
+import { PlanTools } from "@/components/plans/plan-tools";
 import {
   deletePlan,
   approveContent,
@@ -75,6 +76,7 @@ export function PlansView() {
   const [extDefaultDate, setExtDefaultDate] = useState<string | null>(null);
   // 캘린더 날짜칸 클릭 → 그 날짜의 콘텐츠·글감 패널
   const [dayDate, setDayDate] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   // 상세 패널의 링크 추가/수정 인라인 편집
   const [urlEditing, setUrlEditing] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
@@ -134,7 +136,7 @@ export function PlansView() {
         }
         setContentsByPlan(map);
       });
-  }, [selectedClientId]);
+  }, [selectedClientId, reloadKey]);
 
   const profileName = (id: string | null) =>
     profiles.find((p) => p.id === id)?.name ?? "-";
@@ -291,6 +293,8 @@ export function PlansView() {
           </div>
         </div>
       </div>
+
+      <PlanTools onCreated={() => setReloadKey((k) => k + 1)} />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">

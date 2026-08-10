@@ -8,6 +8,7 @@ import { getChannel } from "@/lib/channels";
 import { addTopicToPlan } from "@/lib/actions/keywords";
 import { KeywordReportView } from "@/components/keywords/keyword-report";
 import { BulkKeywordView } from "@/components/keywords/bulk-keyword-view";
+import { BulkKeywordAdd } from "@/components/keywords/bulk-keyword-add";
 import type { ChannelSettings, Keyword } from "@/types/database";
 
 type Tab = "report" | "bulk" | "pool";
@@ -187,6 +188,8 @@ export function KeywordsView() {
             <b>플랜에 추가</b>하거나 바로 <b>콘텐츠 생성</b>으로 넘어갈 수
             있어요.
           </div>
+
+          <BulkKeywordAdd onAdded={loadPool} />
 
           {pool.length === 0 ? (
             <div className="rounded-xl border border-border bg-surface p-8 text-center">

@@ -132,3 +132,38 @@ export async function addTopicToPlan(input: {
   });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+
+/**
+ * 키워드 대량 추가 — 줄바꿈/쉼표로 넣은 키워드를 보관함(candidate)에 일괄 저장.
+ * 이미 있는 키워드는 건너뛴다.
+ */
+export async function bulkAddKeywordsToPool(input: {
+  clientId: string;
+  keywords: string[];
+}): Promise<{ ok: boolean; added: number; skipped: number; error?: string }> {
+  const supabase = await createClient();
+  const unique = [...new Set(input.keywords.map((k) => k.trim()).filter(Boolean))];
+  if (!unique.length) return { ok: false, added: 0, skipped: 0, error: "키워드가 없습니다." };
+
+  const { data: existing } = await supabase
+    .from("keywords")
+    .select("keyword")
+    .eq("client_id", input.clientId)
+    .in("keyword", unique);
+  const existingSet = new Set(
+    ((existing ?? []) as { keyword: string }[]).map((k) => k.keyword),
+  );
+  const toAdd = unique.filter((k) => !existingSet.has(k));
+  if (!toAdd.length) return { ok: true, added: 0, skipped: unique.length };
+
+  const { error } = await supabase.from("keywords").insert(
+    toAdd.map((keyword) => ({
+      client_id: input.clientId,
+      keyword,
+      source: "manual",
+      status: "candidate",
+    })),
+  );
+  if (error) return { ok: false, added: 0, skipped: 0, error: error.message };
+  return { ok: true, added: toAdd.length, skipped: unique.length - toAdd.length };
+}
