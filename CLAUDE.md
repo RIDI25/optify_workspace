@@ -40,7 +40,7 @@ Phase 1 완료(생성 엔진·WP/네이버/스레드·키워드·플랜·라이�
 거래 경로 구분(`lib/deal-channels.ts`): 직접/소개/파트너 경유 — 파트너 경유 건은 세금계산서 거래처=파트너(partner_name),
 실고객은 end_client_name(문서에 '건명'으로 표기). 매출 대시보드에 경로별 수주 구성 집계.
 /revenue 매출: 세금계산서 발행 이력 수기 입력(수주 견적 프리필 지원) — 발행/입금/미수금 집계 + 거래처별 월 적층 차트.
-DB: `supabase/migrations/0001~0017`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices).
+DB: `supabase/migrations/0001~0017`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)

@@ -232,6 +232,18 @@ export interface TaxInvoice extends Timestamps {
   updated_at: string;
 }
 
+export type PaymentKind = "deposit" | "balance" | "full" | "other";
+
+/** 인보이스별 입금 내역 — 선금/잔금 분할 입금 기록 */
+export interface InvoicePayment extends Timestamps {
+  id: string;
+  invoice_id: string;
+  paid_date: string;
+  amount: number;
+  kind: PaymentKind;
+  memo: string | null;
+}
+
 export interface SeoDiagnosis extends Timestamps {
   id: string;
   url: string;
@@ -287,6 +299,7 @@ export interface Database {
       app_settings: TableShape<AppSetting>;
       seo_diagnoses: TableShape<SeoDiagnosis>;
       tax_invoices: TableShape<TaxInvoice>;
+      invoice_payments: TableShape<InvoicePayment>;
       api_usage_logs: TableShape<ApiUsageLog>;
     };
     Views: Record<string, never>;

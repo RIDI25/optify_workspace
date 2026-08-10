@@ -15,7 +15,14 @@ import { createClient } from "@/lib/supabase/client";
 import { DEAL_CHANNELS } from "@/lib/deal-channels";
 import { DEPOSIT_RATE } from "@/lib/quote-config";
 import { won } from "@/lib/export/quote-model";
-import type { DealChannel, Quote, TaxInvoice, TaxInvoiceStatus } from "@/types/database";
+import { PaymentsSection } from "@/components/revenue/payments-section";
+import type {
+  DealChannel,
+  InvoicePayment,
+  Quote,
+  TaxInvoice,
+  TaxInvoiceStatus,
+} from "@/types/database";
 
 /** 견적 프리필 시 청구 단계 — 보통 계약금 선입금 후 잔금 청구 */
 type InvoiceStage = "full" | "deposit" | "balance";
@@ -63,6 +70,7 @@ const EMPTY_FORM = {
 
 export function RevenueView() {
   const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
+  const [payments, setPayments] = useState<InvoicePayment[]>([]);
   const [wonQuotes, setWonQuotes] = useState<Quote[]>([]);
   const [form, setForm] = useState({ ...EMPTY_FORM, issue_date: localDate() });
   const [invoiceStage, setInvoiceStage] = useState<InvoiceStage>("full");
@@ -72,8 +80,9 @@ export function RevenueView() {
 
   const reload = useCallback(async () => {
     const supabase = createClient();
-    const [invRes, qRes] = await Promise.all([
+    const [invRes, payRes, qRes] = await Promise.all([
       supabase.from("tax_invoices").select("*").order("issue_date", { ascending: false }),
+      supabase.from("invoice_payments").select("*").order("paid_date", { ascending: false }),
       supabase
         .from("quotes")
         .select("*")
@@ -82,6 +91,7 @@ export function RevenueView() {
         .limit(30),
     ]);
     setInvoices((invRes.data ?? []) as TaxInvoice[]);
+    setPayments((payRes.data ?? []) as InvoicePayment[]);
     setWonQuotes((qRes.data ?? []) as Quote[]);
     setLoading(false);
   }, []);
@@ -194,12 +204,19 @@ export function RevenueView() {
   const monthIssued = active
     .filter((i) => i.issue_date.startsWith(thisMonth))
     .reduce((s, i) => s + Number(i.total_amount), 0);
-  const monthPaid = active
-    .filter((i) => i.status === "paid" && (i.paid_at ?? "").startsWith(thisMonth))
-    .reduce((s, i) => s + Number(i.total_amount), 0);
-  const unpaid = active
-    .filter((i) => i.status === "issued")
-    .reduce((s, i) => s + Number(i.total_amount), 0);
+  // 입금·미수금은 입금 내역(invoice_payments) 기준으로 계산
+  const activeIds = new Set(active.map((i) => i.id));
+  const monthPaid = payments
+    .filter((p) => activeIds.has(p.invoice_id) && p.paid_date.startsWith(thisMonth))
+    .reduce((s, p) => s + Number(p.amount), 0);
+  const paidByInvoice = new Map<string, number>();
+  for (const p of payments) {
+    paidByInvoice.set(p.invoice_id, (paidByInvoice.get(p.invoice_id) ?? 0) + Number(p.amount));
+  }
+  const unpaid = active.reduce(
+    (s, i) => s + Math.max(0, Number(i.total_amount) - (paidByInvoice.get(i.id) ?? 0)),
+    0,
+  );
   const yearIssued = active
     .filter((i) => i.issue_date.startsWith(thisYear))
     .reduce((s, i) => s + Number(i.total_amount), 0);
@@ -269,7 +286,7 @@ export function RevenueView() {
           <p className="mt-1 text-xl font-bold text-ink">{won(monthPaid)}</p>
         </div>
         <div className="rounded-lg border border-border bg-surface p-4">
-          <p className="text-xs text-muted">미수금 (발행 후 미입금)</p>
+          <p className="text-xs text-muted">미수금 (입금 내역 기준)</p>
           <p className={`mt-1 text-xl font-bold ${unpaid > 0 ? "text-amber-700" : "text-ink"}`}>
             {won(unpaid)}
           </p>
@@ -316,6 +333,9 @@ export function RevenueView() {
           </div>
         )}
       </section>
+
+      {/* 입금·미수금 관리 */}
+      <PaymentsSection invoices={invoices} payments={payments} onChanged={reload} />
 
       {/* 발행 입력 */}
       <section className="space-y-3 rounded-lg border border-border bg-surface p-5">
