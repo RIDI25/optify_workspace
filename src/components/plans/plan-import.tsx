@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useClientContext } from "@/components/providers/client-context";
-import { channelLabel } from "@/lib/channels";
+import { CHANNELS, channelLabel } from "@/lib/channels";
 import { importPlans } from "@/lib/actions/plans";
 import {
   parsePlanWorkbook,
@@ -29,9 +29,18 @@ export function PlanImport({
   const [fileName, setFileName] = useState("");
   const [rows, setRows] = useState<ParsedPlanRow[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  // 기본 채널 선택지는 레지스트리에서 — 이 클라이언트에 channel_settings가 없어도
+  // 등록은 가능해야 한다 (channel은 text 컬럼, 담당자만 자동 배정이 안 될 뿐).
   const [defaultChannel, setDefaultChannel] = useState(
-    channels[0]?.channel ?? "",
+    channels[0]?.channel ?? CHANNELS[0]?.key ?? "",
   );
+  const channelTouched = useRef(false);
+  useEffect(() => {
+    // 채널 설정이 늦게 로드되면(패널을 먼저 연 경우) 클라이언트의 활성 채널을 기본값으로
+    if (!channelTouched.current && channels[0]?.channel) {
+      setDefaultChannel(channels[0].channel);
+    }
+  }, [channels]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -117,12 +126,15 @@ export function PlanImport({
           </span>
           <select
             value={defaultChannel}
-            onChange={(e) => setDefaultChannel(e.target.value)}
+            onChange={(e) => {
+              channelTouched.current = true;
+              setDefaultChannel(e.target.value);
+            }}
             className={input}
           >
-            {channels.map((c) => (
-              <option key={c.channel} value={c.channel}>
-                {channelLabel(c.channel)}
+            {CHANNELS.map((c) => (
+              <option key={c.key} value={c.key}>
+                {channelLabel(c.key)}
               </option>
             ))}
           </select>
