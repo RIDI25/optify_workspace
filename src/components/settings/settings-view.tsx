@@ -7,6 +7,8 @@ import {
   saveClient,
   savePreset,
   saveChannelAssignee,
+  saveChannelConnection,
+  revealChannelPassword,
   saveWpConnection,
 } from "@/lib/actions/settings";
 import {
@@ -421,6 +423,34 @@ function OnboardingChecklist({
   );
 }
 
+/** 말투 템플릿 — 폼에서 선택하면 tone_rules로 저장된다 */
+const TONE_PRESETS: { key: string; label: string; rules: string[] }[] = [
+  {
+    key: "consult",
+    label: "전문가 상담형 — '~합니다' 기본 + '~해요' 혼합",
+    rules: [
+      "'~합니다/~입니다' 체를 기본으로 '~해요/~인데요'를 섞어 옆에서 상담하듯 편하게",
+      "과장 없이 근거 중심으로, 신뢰감은 유지하되 경직되지 않게",
+    ],
+  },
+  {
+    key: "friendly",
+    label: "친근한 이웃형 — '~해요' 위주",
+    rules: [
+      "'~해요/~인데요' 체 위주로 이웃에게 이야기하듯 편하게",
+      "쉬운 단어로 짧게 끊어 쓰고, 독자가 겪는 장면에서 출발",
+    ],
+  },
+  {
+    key: "formal",
+    label: "격식 정보형 — '~입니다' 위주",
+    rules: [
+      "'~입니다/~합니다' 체로 정확하고 담백하게",
+      "감탄사·이모지 없이 정보 중심으로",
+    ],
+  },
+];
+
 function PresetsTab({
   clients,
   profiles,
@@ -435,6 +465,14 @@ function PresetsTab({
   const [channel, setChannel] = useState("");
   const [json, setJson] = useState("");
   const [msg, setMsg] = useState("");
+  // 폼 편집 상태 (JSON은 고급용으로만 유지)
+  const [persona, setPersona] = useState("");
+  const [targetReader, setTargetReader] = useState("");
+  const [toneKey, setToneKey] = useState("consult");
+  const [extraRules, setExtraRules] = useState("");
+  const [hasExistingTone, setHasExistingTone] = useState(false);
+  /** 폼 저장의 기준이 되는 전체 프리셋 (AI 초안 포함) — 폼에 없는 키를 보존한다 */
+  const [baseline, setBaseline] = useState<Record<string, unknown>>({});
   const [assigneeMsg, setAssigneeMsg] = useState("");
   // AI 프리셋 초안 [A-3]
   const [draftOpen, setDraftOpen] = useState(false);
@@ -444,6 +482,22 @@ function PresetsTab({
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftMsg, setDraftMsg] = useState("");
   const cid = clientId || clients[0]?.id || "";
+
+  /** 프리셋 객체 → 폼 필드 + JSON 편집기 동기화 */
+  function applyPreset(preset: Record<string, unknown>) {
+    setBaseline(preset);
+    setJson(JSON.stringify(preset, null, 2));
+    setPersona(typeof preset.persona === "string" ? preset.persona : "");
+    setTargetReader(
+      typeof preset.target_reader === "string" ? preset.target_reader : "",
+    );
+    const existingTone = Array.isArray(preset.tone_rules) && preset.tone_rules.length > 0;
+    setHasExistingTone(existingTone);
+    setToneKey(existingTone ? "keep" : "consult");
+    setExtraRules(
+      Array.isArray(preset.extra_rules) ? preset.extra_rules.join("\n") : "",
+    );
+  }
 
   async function loadSettings(keepChannel?: string) {
     const { data } = await createClient()
@@ -456,7 +510,7 @@ function PresetsTab({
     const ch = keepChannel ?? rows[0]?.channel ?? CHANNELS[0]?.key ?? "";
     setChannel(ch);
     const s = rows.find((x) => x.channel === ch);
-    setJson(s ? JSON.stringify(s.preset, null, 2) : "{}");
+    applyPreset(s?.preset ?? {});
     return rows;
   }
 
@@ -476,7 +530,7 @@ function PresetsTab({
   function selectChannel(ch: string) {
     setChannel(ch);
     const s = settings.find((x) => x.channel === ch);
-    setJson(s ? JSON.stringify(s.preset, null, 2) : "{}");
+    applyPreset(s?.preset ?? {});
   }
 
   const currentAssignee =
@@ -496,16 +550,9 @@ function PresetsTab({
     setTimeout(() => setAssigneeMsg(""), 2000);
   }
 
-  async function save() {
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(json);
-    } catch {
-      setMsg("JSON 형식 오류");
-      return;
-    }
+  async function persist(preset: Record<string, unknown>) {
     const wasNew = !isRegistered(channel);
-    const r = await savePreset(cid, channel, parsed);
+    const r = await savePreset(cid, channel, preset);
     if (r.ok) {
       // 신규 채널이면 행이 생성됐으니 목록 갱신 (담당자 지정도 바로 가능해진다)
       await loadSettings(channel);
@@ -514,6 +561,37 @@ function PresetsTab({
       setMsg(`실패: ${r.error}`);
     }
     setTimeout(() => setMsg(""), 2500);
+  }
+
+  /** 폼 값으로 프리셋 조립 — 기준 프리셋(AI 초안 포함)의 다른 키는 그대로 보존 */
+  async function saveForm() {
+    const base: Record<string, unknown> = { ...baseline };
+    if (persona.trim()) base.persona = persona.trim();
+    else delete base.persona;
+    if (targetReader.trim()) base.target_reader = targetReader.trim();
+    else delete base.target_reader;
+    const tone = TONE_PRESETS.find((t) => t.key === toneKey);
+    if (tone) base.tone_rules = tone.rules; // 'keep'이면 기존 tone_rules 유지
+    const extras = extraRules
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (extras.length) base.extra_rules = extras;
+    else delete base.extra_rules;
+    await persist(base);
+  }
+
+  /** 고급 — JSON 직접 저장 */
+  async function saveJson() {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      setMsg("JSON 형식 오류 — 폼으로 저장하면 형식 걱정 없이 저장됩니다.");
+      setTimeout(() => setMsg(""), 3000);
+      return;
+    }
+    await persist(parsed);
   }
 
   async function genDraft() {
@@ -532,9 +610,9 @@ function PresetsTab({
       });
       const d = await res.json();
       if (d.ok) {
-        setJson(JSON.stringify(d.preset, null, 2));
+        applyPreset(d.preset);
         setDraftOpen(false);
-        setMsg("초안 생성됨 — 검토 후 '프리셋 저장'을 누르세요.");
+        setMsg("초안 생성됨 — 폼에서 검토 후 '프리셋 저장'을 누르세요.");
         setTimeout(() => setMsg(""), 3000);
       } else {
         setDraftMsg(`실패: ${d.error}`);
@@ -592,31 +670,116 @@ function PresetsTab({
           <span className="self-center text-xs text-muted">{assigneeMsg}</span>
         )}
       </div>
-      <textarea
-        value={json}
-        onChange={(e) => setJson(e.target.value)}
-        disabled={readOnly}
-        rows={20}
-        className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs outline-none focus:border-accent-deep disabled:bg-subtle"
-      />
-      {!readOnly && (
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={save}
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-ink hover:opacity-90"
-          >
-            프리셋 저장
-          </button>
-          <button
-            onClick={() => setDraftOpen(true)}
-            disabled={!channel}
-            className="rounded-md border border-accent-deep px-3 py-1.5 text-sm font-medium text-accent-deep hover:bg-tint disabled:opacity-50"
-          >
-            AI로 프리셋 초안 생성
-          </button>
-          {msg && <span className="text-xs text-muted">{msg}</span>}
+      {/* 프리셋 폼 — JSON 없이 고르고 입력해서 저장 */}
+      <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
+        <h3 className="text-sm font-semibold text-ink">
+          글 스타일 프리셋 — {channelLabel(channel)}
+        </h3>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted">
+              페르소나 (누가 쓰는 글인가)
+            </span>
+            <input
+              value={persona}
+              onChange={(e) => setPersona(e.target.value)}
+              disabled={readOnly}
+              placeholder="예: 15년차 인테리어 전문가가 상담하듯 알려주는 글"
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-medium text-muted">
+              대상 독자 (누가 읽는 글인가)
+            </span>
+            <input
+              value={targetReader}
+              onChange={(e) => setTargetReader(e.target.value)}
+              disabled={readOnly}
+              placeholder="예: 사무실 이전·인테리어를 알아보는 중소기업 대표"
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
+            />
+          </label>
         </div>
+        <label className="block space-y-1">
+          <span className="text-xs font-medium text-muted">말투</span>
+          <select
+            value={toneKey}
+            onChange={(e) => setToneKey(e.target.value)}
+            disabled={readOnly}
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm disabled:bg-subtle md:w-auto"
+          >
+            {hasExistingTone && (
+              <option value="keep">기존 말투 규칙 유지</option>
+            )}
+            {TONE_PRESETS.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-xs font-medium text-muted">
+            추가 규칙 (선택 — 한 줄에 하나씩)
+          </span>
+          <textarea
+            value={extraRules}
+            onChange={(e) => setExtraRules(e.target.value)}
+            disabled={readOnly}
+            rows={3}
+            placeholder={"예:\n가격은 구체 금액 대신 범위로만 언급\n마무리에 상담 유도 문구 넣지 않기"}
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
+          />
+        </label>
+        {!readOnly && (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={saveForm}
+              className="rounded-md bg-accent px-4 py-2 text-sm font-bold text-ink hover:opacity-90"
+            >
+              프리셋 저장
+            </button>
+            <button
+              onClick={() => setDraftOpen(true)}
+              disabled={!channel}
+              className="rounded-md border border-accent-deep px-3 py-1.5 text-sm font-medium text-accent-deep hover:bg-tint disabled:opacity-50"
+            >
+              AI로 프리셋 초안 생성
+            </button>
+            {msg && <span className="text-xs text-muted">{msg}</span>}
+          </div>
+        )}
+      </div>
+
+      {/* 채널 계정/연결 정보 — 워드프레스는 전용 탭 사용 */}
+      {channel !== "wordpress" && (
+        <ChannelConnection cid={cid} channel={channel} readOnly={readOnly} />
       )}
+
+      {/* 고급 — JSON 직접 편집 */}
+      <details className="rounded-lg border border-border bg-surface p-4">
+        <summary className="cursor-pointer text-sm font-medium text-muted">
+          고급 — 프리셋 JSON 직접 편집
+        </summary>
+        <div className="mt-3 space-y-2">
+          <textarea
+            value={json}
+            onChange={(e) => setJson(e.target.value)}
+            disabled={readOnly}
+            rows={16}
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs outline-none focus:border-accent-deep disabled:bg-subtle"
+          />
+          {!readOnly && (
+            <button
+              onClick={saveJson}
+              className="rounded-md border border-border px-3 py-1.5 text-sm text-ink hover:bg-subtle"
+            >
+              JSON으로 저장
+            </button>
+          )}
+        </div>
+      </details>
 
       {/* AI 프리셋 초안 모달 [A-3] */}
       {draftOpen && (
@@ -651,6 +814,184 @@ function PresetsTab({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 채널 계정/연결 정보 — 아이디·비밀번호(암호화)·주소·카테고리.
+ * 네이버 블로그처럼 수동 발행하는 채널의 로그인 정보를 팀이 공유한다. */
+function ChannelConnection({
+  cid,
+  channel,
+  readOnly,
+}: {
+  cid: string;
+  channel: string;
+  readOnly: boolean;
+}) {
+  const [accountId, setAccountId] = useState("");
+  const [password, setPassword] = useState("");
+  const [hasPassword, setHasPassword] = useState(false);
+  const [shownPassword, setShownPassword] = useState<string | null>(null);
+  const [channelUrl, setChannelUrl] = useState("");
+  const [category, setCategory] = useState("");
+  const [msg, setMsg] = useState("");
+  const [needsMigration, setNeedsMigration] = useState(false);
+
+  const isNaver = channel.startsWith("naver");
+  const idLabel = isNaver ? "네이버 아이디" : "계정 아이디";
+  const urlLabel =
+    channel === "naver_blog"
+      ? "블로그 주소"
+      : channel === "naver_place"
+        ? "플레이스 주소"
+        : "채널 주소";
+
+  useEffect(() => {
+    if (!cid || !channel) return;
+    setMsg("");
+    setShownPassword(null);
+    setPassword("");
+    createClient()
+      .from("channel_settings")
+      .select("account_id, channel_url, category, account_password_encrypted")
+      .eq("client_id", cid)
+      .eq("channel", channel)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          // 0020 마이그레이션 전이면 컬럼이 없어 조회 실패 — 안내만 하고 프리셋 편집은 유지
+          setNeedsMigration(true);
+          return;
+        }
+        setNeedsMigration(false);
+        setAccountId(data?.account_id ?? "");
+        setChannelUrl(data?.channel_url ?? "");
+        setCategory(data?.category ?? "");
+        setHasPassword(!!data?.account_password_encrypted);
+      });
+  }, [cid, channel]);
+
+  async function save() {
+    const r = await saveChannelConnection(cid, channel, {
+      accountId,
+      password: password || undefined,
+      channelUrl,
+      category,
+    });
+    if (r.ok) {
+      if (password) setHasPassword(true);
+      setPassword("");
+      setMsg("계정 정보 저장됨");
+    } else {
+      setMsg(`실패: ${r.error}`);
+    }
+    setTimeout(() => setMsg(""), 3500);
+  }
+
+  async function reveal() {
+    if (shownPassword !== null) {
+      setShownPassword(null);
+      return;
+    }
+    const r = await revealChannelPassword(cid, channel);
+    if (r.ok && r.password) setShownPassword(r.password);
+    else {
+      setMsg(r.error ?? "조회 실패");
+      setTimeout(() => setMsg(""), 2500);
+    }
+  }
+
+  if (needsMigration) {
+    return (
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
+        채널 계정 정보를 쓰려면 <b>supabase/migrations/0020_channel_connection.sql</b>을
+        Supabase SQL Editor에서 한 번 실행해 주세요.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
+      <h3 className="text-sm font-semibold text-ink">
+        채널 계정 정보 — {channelLabel(channel)}
+      </h3>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-muted">{idLabel}</span>
+          <input
+            value={accountId}
+            onChange={(e) => setAccountId(e.target.value)}
+            disabled={readOnly}
+            placeholder="예: optify_partner"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-muted">
+            비밀번호 {hasPassword && "(저장됨 — 변경 시에만 입력)"}
+          </span>
+          <div className="flex gap-1.5">
+            <input
+              type={shownPassword !== null ? "text" : "password"}
+              value={shownPassword ?? password}
+              onChange={(e) => {
+                setShownPassword(null);
+                setPassword(e.target.value);
+              }}
+              disabled={readOnly && shownPassword === null}
+              placeholder={hasPassword ? "••••••••" : "비밀번호 입력"}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
+            />
+            {hasPassword && (
+              <button
+                onClick={reveal}
+                type="button"
+                className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-muted hover:bg-subtle"
+              >
+                {shownPassword !== null ? "숨기기" : "보기"}
+              </button>
+            )}
+          </div>
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-muted">{urlLabel}</span>
+          <input
+            value={channelUrl}
+            onChange={(e) => setChannelUrl(e.target.value)}
+            disabled={readOnly}
+            placeholder="https://blog.naver.com/…"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs font-medium text-muted">
+            카테고리 (글 올릴 게시판)
+          </span>
+          <input
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            disabled={readOnly}
+            placeholder="예: 인테리어 정보"
+            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
+          />
+        </label>
+      </div>
+      {!readOnly && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={save}
+            className="rounded-md bg-accent-deep px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            계정 정보 저장
+          </button>
+          {msg && <span className="text-xs text-muted">{msg}</span>}
+        </div>
+      )}
+      <p className="text-[11px] text-muted">
+        비밀번호는 암호화되어 저장되고, [보기]를 눌렀을 때만 서버에서 복호화해
+        보여줍니다.
+      </p>
     </div>
   );
 }

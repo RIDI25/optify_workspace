@@ -26,6 +26,7 @@ const PRESET_LABELS: Record<string, string> = {
   structure_rules: "구조 규칙",
   structure_templates: "유형별 구조 템플릿",
   banned_patterns: "금지 패턴",
+  extra_rules: "추가 규칙",
 };
 
 function renderValue(value: unknown): string {

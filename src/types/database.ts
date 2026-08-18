@@ -48,6 +48,11 @@ export interface ChannelSettings extends Timestamps {
   wp_url: string | null;
   wp_username: string | null;
   wp_app_password_encrypted: string | null;
+  /** 채널 계정/연결 정보 (0020) — 네이버 아이디 등 */
+  account_id: string | null;
+  account_password_encrypted: string | null;
+  channel_url: string | null;
+  category: string | null;
   is_active: boolean;
 }
 

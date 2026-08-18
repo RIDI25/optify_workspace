@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { encryptSecret } from "@/lib/crypto";
+import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import { ensureOnboardingTasks } from "@/lib/actions/onboarding";
 
 interface ClientPatch {
@@ -67,6 +67,68 @@ export async function saveChannelAssignee(
       { onConflict: "client_id,channel" },
     );
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/** 채널 계정/연결 정보 저장 (네이버 블로그 등). 비밀번호는 서버에서 암호화. owner만 — RLS로 강제.
+ * password가 빈 값이면 기존 비밀번호 유지. 0020 마이그레이션 필요. */
+export async function saveChannelConnection(
+  clientId: string,
+  channel: string,
+  input: {
+    accountId: string;
+    password?: string;
+    channelUrl: string;
+    category: string;
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const patch: Record<string, unknown> = {
+    client_id: clientId,
+    channel,
+    account_id: input.accountId.trim() || null,
+    channel_url: input.channelUrl.trim() || null,
+    category: input.category.trim() || null,
+  };
+  if (input.password) {
+    patch.account_password_encrypted = encryptSecret(input.password);
+  }
+  const { error } = await supabase
+    .from("channel_settings")
+    .upsert(patch, { onConflict: "client_id,channel" });
+  if (error) {
+    const hint = error.message.includes("account_id")
+      ? " — supabase/migrations/0020_channel_connection.sql을 SQL Editor에서 실행하세요."
+      : "";
+    return { ok: false, error: error.message + hint };
+  }
+  return { ok: true };
+}
+
+/** 저장된 채널 계정 비밀번호 복호화 조회 (수동 발행 시 로그인용).
+ * 로그인한 팀원만 — 행 접근 자체가 RLS로 제한된다. */
+export async function revealChannelPassword(
+  clientId: string,
+  channel: string,
+): Promise<{ ok: boolean; password?: string; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+  const { data, error } = await supabase
+    .from("channel_settings")
+    .select("account_password_encrypted")
+    .eq("client_id", clientId)
+    .eq("channel", channel)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data?.account_password_encrypted)
+    return { ok: false, error: "저장된 비밀번호가 없습니다." };
+  try {
+    return { ok: true, password: decryptSecret(data.account_password_encrypted) };
+  } catch {
+    return { ok: false, error: "복호화 실패 — 비밀번호를 다시 저장해 주세요." };
+  }
 }
 
 /** WP 연결 정보 저장. 비밀번호는 서버에서 암호화. owner만. */
