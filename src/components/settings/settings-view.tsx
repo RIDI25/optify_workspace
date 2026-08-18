@@ -834,7 +834,9 @@ function ChannelConnection({
   const [hasPassword, setHasPassword] = useState(false);
   const [shownPassword, setShownPassword] = useState<string | null>(null);
   const [channelUrl, setChannelUrl] = useState("");
-  const [category, setCategory] = useState("");
+  // 카테고리(게시판)는 여러 개 — 태그로 관리, DB에는 쉼표 구분 문자열로 저장
+  const [categories, setCategories] = useState<string[]>([]);
+  const [catInput, setCatInput] = useState("");
   const [msg, setMsg] = useState("");
   const [needsMigration, setNeedsMigration] = useState(false);
 
@@ -867,17 +869,40 @@ function ChannelConnection({
         setNeedsMigration(false);
         setAccountId(data?.account_id ?? "");
         setChannelUrl(data?.channel_url ?? "");
-        setCategory(data?.category ?? "");
+        setCategories(
+          (data?.category ?? "")
+            .split(/[,\n]/)
+            .map((s: string) => s.trim())
+            .filter(Boolean),
+        );
+        setCatInput("");
         setHasPassword(!!data?.account_password_encrypted);
       });
   }, [cid, channel]);
 
+  function addCategory() {
+    const v = catInput.trim();
+    if (!v) return;
+    setCategories((prev) => (prev.includes(v) ? prev : [...prev, v]));
+    setCatInput("");
+  }
+
   async function save() {
+    // 입력창에 치고 [추가]를 안 누른 값도 저장에 포함
+    const pending = catInput.trim();
+    const finalCategories =
+      pending && !categories.includes(pending)
+        ? [...categories, pending]
+        : categories;
+    if (pending) {
+      setCategories(finalCategories);
+      setCatInput("");
+    }
     const r = await saveChannelConnection(cid, channel, {
       accountId,
       password: password || undefined,
       channelUrl,
-      category,
+      category: finalCategories.join(", "),
     });
     if (r.ok) {
       if (password) setHasPassword(true);
@@ -964,18 +989,58 @@ function ChannelConnection({
             className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
           />
         </label>
-        <label className="space-y-1">
-          <span className="text-xs font-medium text-muted">
-            카테고리 (글 올릴 게시판)
+        <div className="space-y-1">
+          <span className="block text-xs font-medium text-muted">
+            카테고리 (글 올릴 게시판 — 여러 개 등록 가능)
           </span>
-          <input
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            disabled={readOnly}
-            placeholder="예: 인테리어 정보"
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
-          />
-        </label>
+          {categories.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pb-1">
+              {categories.map((c) => (
+                <span
+                  key={c}
+                  className="inline-flex items-center gap-1 rounded-full bg-tint px-2.5 py-1 text-xs font-medium text-accent-deep"
+                >
+                  {c}
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCategories((prev) => prev.filter((x) => x !== c))
+                      }
+                      className="text-accent-deep/60 hover:text-accent-deep"
+                      aria-label={`${c} 삭제`}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+          {!readOnly && (
+            <div className="flex gap-1.5">
+              <input
+                value={catInput}
+                onChange={(e) => setCatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    addCategory();
+                  }
+                }}
+                placeholder="예: 인테리어 정보 — 입력 후 Enter 또는 [추가]"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
+              />
+              <button
+                type="button"
+                onClick={addCategory}
+                className="shrink-0 rounded-md border border-border px-3 py-1 text-sm text-muted hover:bg-subtle"
+              >
+                추가
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       {!readOnly && (
         <div className="flex items-center gap-2">
