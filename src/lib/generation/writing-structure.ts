@@ -19,7 +19,7 @@ export const HARVARD_5_BLOCK = [
   "  - 정보를 나열해 쌓는 글이 아니라, 하나의 주장을 향해 흘러가는 글이어야 한다.",
 ].join("\n");
 
-/** 이 골격을 적용할 채널 (긴 글 채널만) */
+/** 이 골격을 적용할 채널 (긴 글 채널만 — 웹사이트도 아티클형) */
 export function usesHarvardStructure(channel: string): boolean {
-  return channel === "naver_blog" || channel === "wordpress";
+  return channel === "naver_blog" || channel === "wordpress" || channel === "website";
 }

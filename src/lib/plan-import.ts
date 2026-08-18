@@ -64,9 +64,13 @@ export function resolveChannel(raw: string): string | null {
   for (const c of CHANNELS) {
     if (v === c.key || v === c.label.replace(/\s+/g, "").toLowerCase()) return c.key;
   }
-  if (v.includes("네이버") || v.includes("naver") || v.includes("블로그")) return "naver_blog";
+  // 순서 주의: "네이버 플레이스"가 "네이버"보다 먼저 매칭돼야 한다
+  if (v.includes("플레이스") || v.includes("place")) return "naver_place";
+  if (v.includes("웹사이트") || v.includes("홈페이지") || v.includes("website") || v.includes("사이트"))
+    return "website";
   if (v.includes("워드프레스") || v.includes("워프") || v.includes("wordpress") || v.includes("wp"))
     return "wordpress";
+  if (v.includes("네이버") || v.includes("naver") || v.includes("블로그")) return "naver_blog";
   if (v.includes("스레드") || v.includes("thread")) return "threads";
   return null;
 }

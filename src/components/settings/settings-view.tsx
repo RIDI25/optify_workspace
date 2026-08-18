@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { channelLabel } from "@/lib/channels";
+import { CHANNELS, channelLabel } from "@/lib/channels";
 import {
   saveClient,
   savePreset,
@@ -445,20 +445,33 @@ function PresetsTab({
   const [draftMsg, setDraftMsg] = useState("");
   const cid = clientId || clients[0]?.id || "";
 
-  useEffect(() => {
-    if (!cid) return;
-    createClient()
+  async function loadSettings(keepChannel?: string) {
+    const { data } = await createClient()
       .from("channel_settings")
       .select("id, channel, preset, default_assignee")
-      .eq("client_id", cid)
-      .then(({ data }) => {
-        const rows = (data ?? []) as ChannelSettings[];
-        setSettings(rows);
-        const first = rows[0];
-        setChannel(first?.channel ?? "");
-        setJson(first ? JSON.stringify(first.preset, null, 2) : "");
-      });
+      .eq("client_id", cid);
+    const rows = (data ?? []) as ChannelSettings[];
+    setSettings(rows);
+    // 등록된 첫 채널 → 없으면 레지스트리 첫 채널 (미등록이어도 선택·저장 가능해야 한다)
+    const ch = keepChannel ?? rows[0]?.channel ?? CHANNELS[0]?.key ?? "";
+    setChannel(ch);
+    const s = rows.find((x) => x.channel === ch);
+    setJson(s ? JSON.stringify(s.preset, null, 2) : "{}");
+    return rows;
+  }
+
+  useEffect(() => {
+    if (!cid) return;
+    loadSettings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid]);
+
+  // 레지스트리 전체 + (레지스트리에 없지만 DB에 있는) 채널의 합집합
+  const channelOptions = [
+    ...CHANNELS.map((c) => c.key),
+    ...settings.map((s) => s.channel).filter((ch) => !CHANNELS.some((c) => c.key === ch)),
+  ];
+  const isRegistered = (ch: string) => settings.some((s) => s.channel === ch);
 
   function selectChannel(ch: string) {
     setChannel(ch);
@@ -471,12 +484,14 @@ function PresetsTab({
 
   async function changeAssignee(value: string) {
     const assignee = value || null;
+    const wasNew = !isRegistered(channel);
     setSettings((prev) =>
       prev.map((s) =>
         s.channel === channel ? { ...s, default_assignee: assignee } : s,
       ),
     );
     const r = await saveChannelAssignee(cid, channel, assignee);
+    if (r.ok && wasNew) await loadSettings(channel); // upsert로 행이 생성됨
     setAssigneeMsg(r.ok ? "기본 담당자 저장됨" : `실패: ${r.error}`);
     setTimeout(() => setAssigneeMsg(""), 2000);
   }
@@ -489,9 +504,16 @@ function PresetsTab({
       setMsg("JSON 형식 오류");
       return;
     }
+    const wasNew = !isRegistered(channel);
     const r = await savePreset(cid, channel, parsed);
-    setMsg(r.ok ? "저장됨" : `실패: ${r.error}`);
-    setTimeout(() => setMsg(""), 2000);
+    if (r.ok) {
+      // 신규 채널이면 행이 생성됐으니 목록 갱신 (담당자 지정도 바로 가능해진다)
+      await loadSettings(channel);
+      setMsg(wasNew ? "채널 등록 + 프리셋 저장됨" : "저장됨");
+    } else {
+      setMsg(`실패: ${r.error}`);
+    }
+    setTimeout(() => setMsg(""), 2500);
   }
 
   async function genDraft() {
@@ -543,9 +565,10 @@ function PresetsTab({
           onChange={(e) => selectChannel(e.target.value)}
           className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
         >
-          {settings.map((s) => (
-            <option key={s.id} value={s.channel}>
-              {channelLabel(s.channel)}
+          {channelOptions.map((ch) => (
+            <option key={ch} value={ch}>
+              {channelLabel(ch)}
+              {isRegistered(ch) ? "" : " (미등록)"}
             </option>
           ))}
         </select>

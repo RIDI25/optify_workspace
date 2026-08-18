@@ -20,6 +20,8 @@ export interface ChannelDef {
 
 export const CHANNELS: ChannelDef[] = [
   { key: "naver_blog", label: "네이버 블로그", color: "#03C75A", hasContentTypes: false },
+  { key: "naver_place", label: "네이버 플레이스", color: "#F97316", hasContentTypes: false },
+  { key: "website", label: "웹사이트", color: "#6366F1", hasContentTypes: false },
   { key: "wordpress", label: "워드프레스", color: "#21759B", hasContentTypes: false },
   { key: "threads", label: "스레드", color: "#1A2421", hasContentTypes: true },
 ];

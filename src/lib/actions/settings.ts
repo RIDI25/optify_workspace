@@ -52,7 +52,8 @@ export async function savePreset(
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
-/** 채널 기본 담당자 저장. owner만 — RLS로 강제. */
+/** 채널 기본 담당자 저장. owner만 — RLS로 강제.
+ * 미등록 채널이면 행을 생성(upsert) — update만 하면 조용히 실패한다. */
 export async function saveChannelAssignee(
   clientId: string,
   channel: string,
@@ -61,9 +62,10 @@ export async function saveChannelAssignee(
   const supabase = await createClient();
   const { error } = await supabase
     .from("channel_settings")
-    .update({ default_assignee: assignee })
-    .eq("client_id", clientId)
-    .eq("channel", channel);
+    .upsert(
+      { client_id: clientId, channel, default_assignee: assignee },
+      { onConflict: "client_id,channel" },
+    );
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
