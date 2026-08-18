@@ -79,6 +79,8 @@ export async function importPlans(input: {
     channel: string;
     keyword: string | null;
     date: string | null;
+    /** 엑셀의 월 검색량 — 키워드 신규 생성 시 avg_monthly_searches로 저장 */
+    volume?: number | null;
     memo: string | null;
   }[];
 }): Promise<{ ok: boolean; count: number; error?: string }> {
@@ -114,6 +116,14 @@ export async function importPlans(input: {
     }
     const missing = uniqueKeywords.filter((k) => !keywordIds.has(k));
     if (missing.length) {
+      // 같은 키워드가 여러 행에 있으면 첫 번째 검색량 사용
+      const volumeByKeyword = new Map<string, number>();
+      for (const i of items) {
+        const k = i.keyword?.trim();
+        if (k && i.volume != null && !volumeByKeyword.has(k)) {
+          volumeByKeyword.set(k, i.volume);
+        }
+      }
       const { data: inserted, error: kwErr } = await supabase
         .from("keywords")
         .insert(
@@ -122,6 +132,7 @@ export async function importPlans(input: {
             keyword,
             source: "manual",
             status: "planned",
+            avg_monthly_searches: volumeByKeyword.get(keyword) ?? null,
           })),
         )
         .select("id, keyword");

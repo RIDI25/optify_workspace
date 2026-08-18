@@ -72,6 +72,7 @@ export function PlanImport({
           channel: row.channel ?? defaultChannel,
           keyword: row.keyword,
           date: row.date,
+          volume: row.volume,
           memo: row.memo,
         })),
       });
@@ -129,8 +130,9 @@ export function PlanImport({
       </div>
 
       <p className="text-[11px] text-muted">
-        첫 행이 헤더인 엑셀을 올리면 자동으로 읽습니다. 인식 컬럼: <b>제목/주제</b>(필수),
-        날짜/발행일, 키워드, 채널, 메모. 키워드는 보관함에 자동 연결(없으면 생성)됩니다.
+        헤더 행을 자동으로 찾습니다 (상단 안내 문구가 있어도 됩니다). 인식 컬럼:{" "}
+        <b>제목/주제</b>(필수), 날짜/발행일, 키워드/검색어, 검색량, 채널, 메모.
+        키워드는 보관함에 자동 연결되고, 없으면 검색량과 함께 새로 생성됩니다.
       </p>
 
       {rows.length > 0 && (
@@ -145,9 +147,14 @@ export function PlanImport({
                 .map(
                   ([field, header]) =>
                     `${
-                      { title: "제목", date: "날짜", keyword: "키워드", channel: "채널", memo: "메모" }[
-                        field
-                      ] ?? field
+                      {
+                        title: "제목",
+                        date: "날짜",
+                        keyword: "키워드",
+                        volume: "검색량",
+                        channel: "채널",
+                        memo: "메모",
+                      }[field] ?? field
                     }←"${header}"`,
                 )
                 .join(", ")}
@@ -162,6 +169,7 @@ export function PlanImport({
                   <th className="px-2 py-1.5">제목</th>
                   <th className="px-2 py-1.5">날짜</th>
                   <th className="px-2 py-1.5">키워드</th>
+                  <th className="px-2 py-1.5">검색량</th>
                   <th className="px-2 py-1.5">채널</th>
                   <th className="px-2 py-1.5">비고</th>
                 </tr>
@@ -186,6 +194,9 @@ export function PlanImport({
                     </td>
                     <td className="max-w-[140px] truncate px-2 py-1.5">
                       {r.keyword ?? "-"}
+                    </td>
+                    <td className="px-2 py-1.5 font-mono text-xs">
+                      {r.volume != null ? r.volume.toLocaleString() : "-"}
                     </td>
                     <td className="px-2 py-1.5">
                       {r.channel
