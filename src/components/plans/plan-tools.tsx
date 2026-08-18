@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { channelLabel } from "@/lib/channels";
 import { createBulkPlans } from "@/lib/actions/plans";
+import { PlanImport } from "@/components/plans/plan-import";
 import type { ChannelSettings } from "@/types/database";
 
 const input =
@@ -42,7 +43,7 @@ function distributeDates(start: string, end: string, n: number, skipWeekends: bo
 
 export function PlanTools({ onCreated }: { onCreated: () => void }) {
   const { selectedClientId, selectedClient } = useClientContext();
-  const [open, setOpen] = useState<"" | "generate" | "export">("");
+  const [open, setOpen] = useState<"" | "generate" | "import" | "export">("");
   const [channels, setChannels] = useState<ChannelSettings[]>([]);
 
   // 월간 플랜 생성기
@@ -202,6 +203,17 @@ export function PlanTools({ onCreated }: { onCreated: () => void }) {
           📅 월간 플랜 자동 생성
         </button>
         <button
+          onClick={() => setOpen(open === "import" ? "" : "import")}
+          className={[
+            "rounded-md border px-3 py-1.5 text-sm font-medium",
+            open === "import"
+              ? "border-accent-deep bg-tint text-accent-deep"
+              : "border-border text-ink hover:bg-subtle",
+          ].join(" ")}
+        >
+          📥 엑셀 업로드
+        </button>
+        <button
           onClick={() => setOpen(open === "export" ? "" : "export")}
           className={[
             "rounded-md border px-3 py-1.5 text-sm font-medium",
@@ -288,6 +300,10 @@ export function PlanTools({ onCreated }: { onCreated: () => void }) {
             클릭해 검토 후 발행 처리만 하면 됩니다.
           </p>
         </div>
+      )}
+
+      {open === "import" && (
+        <PlanImport channels={channels} onCreated={onCreated} />
       )}
 
       {open === "export" && (
