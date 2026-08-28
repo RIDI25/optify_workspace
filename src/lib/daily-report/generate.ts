@@ -1,11 +1,6 @@
 /** 데일리 리포트 AI 생성 — 수동(버튼)·자동(cron) 공용 */
 
-import {
-  createAnthropic,
-  GENERATION_MODEL,
-  GENERATION_BETAS,
-  GENERATION_FALLBACKS,
-} from "@/lib/anthropic";
+import { generateText } from "@/lib/llm";
 import { robustJsonParse } from "@/lib/generation/json";
 import type { CollectResult } from "@/lib/daily-report/collect";
 import type { DailyReportContent } from "@/types/daily-report";
@@ -40,6 +35,9 @@ export interface GeneratedDailyReport {
   report: DailyReportContent;
   inputTokens: number;
   outputTokens: number;
+  /** 실제 생성에 쓰인 프로바이더·모델 (사용량 로깅용) */
+  provider: "anthropic" | "openai";
+  model: string;
 }
 
 /** 수집 결과 → 리포트 JSON. 파싱 실패 시 throw. */
@@ -65,29 +63,18 @@ export async function generateDailyReportContent(
     ),
   ].join("\n");
 
-  const anthropic = createAnthropic();
-  const msg = await anthropic.beta.messages
-    .stream({
-      model: GENERATION_MODEL,
-      betas: GENERATION_BETAS,
-      fallbacks: GENERATION_FALLBACKS,
-      max_tokens: 4000,
-      system: SYSTEM,
-      messages: [{ role: "user", content: userMsg }],
-    })
-    .finalMessage();
+  const msg = await generateText({ system: SYSTEM, user: userMsg, maxTokens: 4000 });
 
-  const bt = msg.content.find((b) => b.type === "text");
-  const report = robustJsonParse<DailyReportContent>(
-    bt && bt.type === "text" ? bt.text : "",
-  );
+  const report = robustJsonParse<DailyReportContent>(msg.text);
   if (!report || !Array.isArray(report.headlines)) {
     throw new Error("리포트 파싱 실패");
   }
   return {
     report,
-    inputTokens: msg.usage.input_tokens,
-    outputTokens: msg.usage.output_tokens,
+    inputTokens: msg.inputTokens,
+    outputTokens: msg.outputTokens,
+    provider: msg.provider,
+    model: msg.model,
   };
 }
 

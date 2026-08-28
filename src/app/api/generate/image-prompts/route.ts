@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createAnthropic,
-  GENERATION_MODEL,
-  GENERATION_BETAS,
-  GENERATION_FALLBACKS,
-} from "@/lib/anthropic";
+import { generateText } from "@/lib/llm";
 import { buildImagePromptsPrompt } from "@/lib/generation/engine";
 import { robustJsonParse } from "@/lib/generation/json";
 import { logApiUsage } from "@/lib/usage";
@@ -43,30 +38,17 @@ export async function POST(req: NextRequest) {
   });
 
   try {
-    const anthropic = createAnthropic();
-    const msg = await anthropic.beta.messages
-      .stream({
-        model: GENERATION_MODEL,
-        betas: GENERATION_BETAS,
-        fallbacks: GENERATION_FALLBACKS,
-        max_tokens: 4000,
-        system,
-        messages: [{ role: "user", content: userPrompt }],
-      })
-      .finalMessage();
+    const msg = await generateText({ system, user: userPrompt, maxTokens: 4000 });
 
-    const bt = msg.content.find((b) => b.type === "text");
-    const parsed = robustJsonParse<ImagePrompt[]>(
-      bt && bt.type === "text" ? bt.text : "",
-    );
+    const parsed = robustJsonParse<ImagePrompt[]>(msg.text);
 
     await logApiUsage({
       userId: user.id,
       clientId: clientId ?? null,
-      provider: "anthropic",
-      model: GENERATION_MODEL,
-      inputTokens: msg.usage.input_tokens,
-      outputTokens: msg.usage.output_tokens,
+      provider: msg.provider,
+      model: msg.model,
+      inputTokens: msg.inputTokens,
+      outputTokens: msg.outputTokens,
     });
 
     if (!Array.isArray(parsed)) {

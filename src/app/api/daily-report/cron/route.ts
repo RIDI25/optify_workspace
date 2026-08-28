@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
-import { GENERATION_MODEL } from "@/lib/anthropic";
 import { collectNews } from "@/lib/daily-report/collect";
 import {
   generateDailyReportContent,
@@ -51,14 +50,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, date, items: 0 });
     }
 
-    const { report, inputTokens, outputTokens } =
+    const { report, inputTokens, outputTokens, provider, model } =
       await generateDailyReportContent(date, collected);
 
     await logApiUsage({
       userId: null,
       clientId: null,
-      provider: "anthropic",
-      model: GENERATION_MODEL,
+      provider,
+      model,
       inputTokens,
       outputTokens,
     });

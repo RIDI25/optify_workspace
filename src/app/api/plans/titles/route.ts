@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createAnthropic,
-  GENERATION_MODEL,
-  GENERATION_BETAS,
-  GENERATION_FALLBACKS,
-} from "@/lib/anthropic";
+import { generateText } from "@/lib/llm";
 import { KOREAN_STYLE_BLOCK } from "@/lib/generation/korean-style";
 import { robustJsonParse } from "@/lib/generation/json";
 import { logApiUsage } from "@/lib/usage";
@@ -46,28 +41,17 @@ export async function POST(req: NextRequest) {
   ].join("\n\n");
 
   try {
-    const anthropic = createAnthropic();
-    const res = await anthropic.beta.messages.create({
-      model: GENERATION_MODEL,
-      betas: GENERATION_BETAS,
-      fallbacks: GENERATION_FALLBACKS,
-      max_tokens: 2000,
-      system,
-      messages: [{ role: "user", content: `키워드:\n${list.map((k) => `- ${k}`).join("\n")}` }],
-    });
-    const text = res.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { text: string }).text)
-      .join("\n");
+    const res = await generateText({ system, user: `키워드:\n${list.map((k) => `- ${k}`).join("\n")}`, maxTokens: 2000 });
+    const text = res.text;
     const titles = robustJsonParse<{ keyword: string; title: string }[]>(text) ?? [];
 
     await logApiUsage({
       userId: user.id,
       clientId: clientId ?? null,
-      provider: "anthropic",
-      model: GENERATION_MODEL,
-      inputTokens: res.usage.input_tokens,
-      outputTokens: res.usage.output_tokens,
+      provider: res.provider,
+      model: res.model,
+      inputTokens: res.inputTokens,
+      outputTokens: res.outputTokens,
     });
 
     return NextResponse.json({ ok: true, titles });

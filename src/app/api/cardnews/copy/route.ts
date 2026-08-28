@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createAnthropic,
-  GENERATION_MODEL,
-  GENERATION_BETAS,
-  GENERATION_FALLBACKS,
-} from "@/lib/anthropic";
+import { generateText } from "@/lib/llm";
 import { KOREAN_STYLE_BLOCK } from "@/lib/generation/korean-style";
 import { robustJsonParse } from "@/lib/generation/json";
 import { logApiUsage } from "@/lib/usage";
@@ -94,19 +89,8 @@ export async function POST(req: NextRequest) {
         .join("\n")}`,
     ].join("\n\n");
 
-    const anthropic = createAnthropic();
-    const res = await anthropic.beta.messages.create({
-      model: GENERATION_MODEL,
-      betas: GENERATION_BETAS,
-      fallbacks: GENERATION_FALLBACKS,
-      max_tokens: 3000,
-      system,
-      messages: [{ role: "user", content: userMsg }],
-    });
-    const text = res.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { text: string }).text)
-      .join("\n");
+    const res = await generateText({ system, user: userMsg, maxTokens: 3000 });
+    const text = res.text;
     const cards = robustJsonParse<CardCopy[]>(text);
     if (!cards || !Array.isArray(cards) || !cards.length) {
       throw new Error("카드 카피 파싱 실패 — 다시 시도해 주세요.");
@@ -115,10 +99,10 @@ export async function POST(req: NextRequest) {
     await logApiUsage({
       userId: user.id,
       clientId: null,
-      provider: "anthropic",
-      model: GENERATION_MODEL,
-      inputTokens: res.usage.input_tokens,
-      outputTokens: res.usage.output_tokens,
+      provider: res.provider,
+      model: res.model,
+      inputTokens: res.inputTokens,
+      outputTokens: res.outputTokens,
     });
 
     return NextResponse.json({ ok: true, cards });

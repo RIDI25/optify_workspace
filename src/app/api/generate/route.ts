@@ -1,11 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createAnthropic,
-  GENERATION_MODEL,
-  GENERATION_BETAS,
-  GENERATION_FALLBACKS,
-} from "@/lib/anthropic";
+import { streamText, currentGenerationModel, generationProvider } from "@/lib/llm";
 import { buildSystemPrompt, buildUserPrompt } from "@/lib/generation/engine";
 import { logApiUsage } from "@/lib/usage";
 import { approvalFieldsForCreator } from "@/lib/approval";
@@ -86,7 +81,6 @@ export async function POST(req: NextRequest) {
 
   const maxTokens = body.channel === "wordpress" ? 32000 : 16000;
   const encoder = new TextEncoder();
-  const anthropic = createAnthropic();
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -95,32 +89,20 @@ export async function POST(req: NextRequest) {
         contentId: null,
         inputTokens: 0,
         outputTokens: 0,
-        model: GENERATION_MODEL,
+        model: currentGenerationModel(),
       };
 
       try {
-        const ms = anthropic.beta.messages.stream({
-          model: GENERATION_MODEL,
-          betas: GENERATION_BETAS,
-          fallbacks: GENERATION_FALLBACKS,
-          max_tokens: maxTokens,
-          system,
-          messages: [{ role: "user", content: userPrompt }],
-        });
-
-        for await (const event of ms) {
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            fullText += event.delta.text;
-            controller.enqueue(encoder.encode(event.delta.text));
-          }
-        }
-
-        const final = await ms.finalMessage();
-        meta.inputTokens = final.usage.input_tokens;
-        meta.outputTokens = final.usage.output_tokens;
+        const final = await streamText(
+          { system, user: userPrompt, maxTokens },
+          (delta) => {
+            fullText += delta;
+            controller.enqueue(encoder.encode(delta));
+          },
+        );
+        meta.inputTokens = final.inputTokens;
+        meta.outputTokens = final.outputTokens;
+        meta.model = final.model;
 
         // 네이버: 카테고리 확정 — 사용자가 고른 값 우선, auto면 본문 끝 마커에서 파싱
         if (body.channel === "naver_blog") {
@@ -150,9 +132,7 @@ export async function POST(req: NextRequest) {
             content_type: body.contentType ?? null,
             title: body.topic.trim().slice(0, 120),
             body: fullText,
-            model: GENERATION_MODEL,
-            betas: GENERATION_BETAS,
-            fallbacks: GENERATION_FALLBACKS,
+            model: meta.model,
             input_tokens: meta.inputTokens,
             output_tokens: meta.outputTokens,
             created_by: user.id,
@@ -182,8 +162,8 @@ export async function POST(req: NextRequest) {
         await logApiUsage({
           userId: user.id,
           clientId: body.clientId,
-          provider: "anthropic",
-          model: GENERATION_MODEL,
+          provider: generationProvider(),
+          model: meta.model,
           inputTokens: meta.inputTokens,
           outputTokens: meta.outputTokens,
         });

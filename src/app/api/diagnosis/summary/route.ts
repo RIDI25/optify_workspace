@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createAnthropic,
-  GENERATION_MODEL,
-  GENERATION_BETAS,
-  GENERATION_FALLBACKS,
-} from "@/lib/anthropic";
+import { generateText } from "@/lib/llm";
 import { KOREAN_STYLE_BLOCK } from "@/lib/generation/korean-style";
 import { logApiUsage } from "@/lib/usage";
 import type { DiagnosisResult } from "@/lib/seo-audit/types";
@@ -68,28 +63,16 @@ export async function POST(req: NextRequest) {
         : ""
     }`;
 
-    const anthropic = createAnthropic();
-    const res = await anthropic.beta.messages.create({
-      model: GENERATION_MODEL,
-      betas: GENERATION_BETAS,
-      fallbacks: GENERATION_FALLBACKS,
-      max_tokens: 1500,
-      system,
-      messages: [{ role: "user", content: userMsg }],
-    });
-    const summary = res.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { text: string }).text)
-      .join("\n")
-      .trim();
+    const res = await generateText({ system, user: userMsg, maxTokens: 1500 });
+    const summary = res.text.trim();
 
     await logApiUsage({
       userId: user.id,
       clientId: null,
-      provider: "anthropic",
-      model: GENERATION_MODEL,
-      inputTokens: res.usage.input_tokens,
-      outputTokens: res.usage.output_tokens,
+      provider: res.provider,
+      model: res.model,
+      inputTokens: res.inputTokens,
+      outputTokens: res.outputTokens,
     });
 
     await supabase.from("seo_diagnoses").update({ ai_summary: summary }).eq("id", diagnosisId);

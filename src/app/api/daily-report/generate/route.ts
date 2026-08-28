@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { GENERATION_MODEL } from "@/lib/anthropic";
 import { generateDailyReportContent } from "@/lib/daily-report/generate";
 import { logApiUsage } from "@/lib/usage";
 import type { CollectResult } from "@/lib/daily-report/collect";
@@ -37,14 +36,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { report, inputTokens, outputTokens } =
+    const { report, inputTokens, outputTokens, provider, model } =
       await generateDailyReportContent(date, collected);
 
     await logApiUsage({
       userId: user.id,
       clientId: null,
-      provider: "anthropic",
-      model: GENERATION_MODEL,
+      provider,
+      model,
       inputTokens,
       outputTokens,
     });

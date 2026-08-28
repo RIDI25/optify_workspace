@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createAnthropic,
-  GENERATION_MODEL,
-  GENERATION_BETAS,
-  GENERATION_FALLBACKS,
-} from "@/lib/anthropic";
+import { generateText } from "@/lib/llm";
 import { buildWordpressJsonPrompt } from "@/lib/generation/engine";
 import { robustJsonParse } from "@/lib/generation/json";
 import { logApiUsage } from "@/lib/usage";
@@ -82,41 +77,20 @@ export async function POST(req: NextRequest) {
   });
 
   try {
-    const anthropic = createAnthropic();
-    // 큰 max_tokens는 non-streaming 시 SDK의 10분 타임아웃 가드에 걸리므로 스트리밍 사용.
-    // 청크는 SDK가 누적하고, finalMessage()로 완성 메시지를 받아 JSON을 파싱한다.
-    const msg = await anthropic.beta.messages
-      .stream({
-        model: GENERATION_MODEL,
-        betas: GENERATION_BETAS,
-        fallbacks: GENERATION_FALLBACKS,
-        max_tokens: 32000,
-        system,
-        messages: [{ role: "user", content: userPrompt }],
-      })
-      .finalMessage();
-
-    const textBlock = msg.content.find((b) => b.type === "text");
-    const rawText = textBlock && textBlock.type === "text" ? textBlock.text : "";
+    // 긴 출력은 llm 레이어가 내부적으로 스트리밍해 타임아웃을 피한다.
+    const msg = await generateText({ system, user: userPrompt, maxTokens: 32000 });
+    const rawText = msg.text;
     let parsed = robustJsonParse<WpJson>(rawText);
 
     // 재시도: 유효 JSON으로 다시 작성 요청
     if (!parsed) {
-      const retry = await anthropic.beta.messages
-        .stream({
-          model: GENERATION_MODEL,
-          betas: GENERATION_BETAS,
-          fallbacks: GENERATION_FALLBACKS,
-          max_tokens: 32000,
-          system:
-            "당신은 잘못된 JSON을 고치는 도우미입니다. 입력을 유효한 JSON으로만 다시 출력하세요. 다른 텍스트 금지.",
-          messages: [
-            { role: "user", content: `유효한 JSON으로 다시 출력:\n\n${rawText}` },
-          ],
-        })
-        .finalMessage();
-      const rb = retry.content.find((b) => b.type === "text");
-      parsed = robustJsonParse<WpJson>(rb && rb.type === "text" ? rb.text : "");
+      const retry = await generateText({
+        system:
+          "당신은 잘못된 JSON을 고치는 도우미입니다. 입력을 유효한 JSON으로만 다시 출력하세요. 다른 텍스트 금지.",
+        user: `유효한 JSON으로 다시 출력:\n\n${rawText}`,
+        maxTokens: 32000,
+      });
+      parsed = robustJsonParse<WpJson>(retry.text);
     }
 
     if (!parsed?.content_html) {
@@ -126,34 +100,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    let inputTokens = msg.usage.input_tokens;
-    let outputTokens = msg.usage.output_tokens;
+    let inputTokens = msg.inputTokens;
+    let outputTokens = msg.outputTokens;
 
     // 분량 보강 패스: 3,000자 미만이면 부족한 섹션을 확장(1회)
     if (textLen(parsed.content_html) < MIN_CHARS) {
-      const boost = await anthropic.beta.messages
-        .stream({
-          model: GENERATION_MODEL,
-          betas: GENERATION_BETAS,
-          fallbacks: GENERATION_FALLBACKS,
-          max_tokens: 32000,
-          system:
-            "너는 옵티파이의 SEO 편집자. 주어진 HTML 블로그 본문에서 분량이 얕은 H2 섹션을 각 400~600자 이상으로 확장해 전체를 3,000자 이상으로 보강하라. 기존 구조·소제목·주제를 유지하고 문단·예시·설명을 덧붙여 자연스럽게 늘린다. 없는 통계·수치는 만들지 말 것. 확장된 전체 HTML만 출력(코드블록·설명 문구 금지).",
-          messages: [
-            {
-              role: "user",
-              content: `현재 본문 글자 수 약 ${textLen(parsed.content_html)}자. 3,000자 이상으로 확장한 전체 HTML을 출력:\n\n${parsed.content_html}`,
-            },
-          ],
-        })
-        .finalMessage();
-      const bt = boost.content.find((b) => b.type === "text");
-      const expanded =
-        bt && bt.type === "text"
-          ? bt.text.replace(/```(?:html)?/g, "").trim()
-          : "";
-      inputTokens += boost.usage.input_tokens;
-      outputTokens += boost.usage.output_tokens;
+      const boost = await generateText({
+        system:
+          "너는 옵티파이의 SEO 편집자. 주어진 HTML 블로그 본문에서 분량이 얕은 H2 섹션을 각 400~600자 이상으로 확장해 전체를 3,000자 이상으로 보강하라. 기존 구조·소제목·주제를 유지하고 문단·예시·설명을 덧붙여 자연스럽게 늘린다. 없는 통계·수치는 만들지 말 것. 확장된 전체 HTML만 출력(코드블록·설명 문구 금지).",
+        user: `현재 본문 글자 수 약 ${textLen(parsed.content_html)}자. 3,000자 이상으로 확장한 전체 HTML을 출력:\n\n${parsed.content_html}`,
+        maxTokens: 32000,
+      });
+      const expanded = boost.text.replace(/```(?:html)?/g, "").trim();
+      inputTokens += boost.inputTokens;
+      outputTokens += boost.outputTokens;
       if (textLen(expanded) > textLen(parsed.content_html)) {
         parsed.content_html = expanded;
       }
@@ -169,9 +129,7 @@ export async function POST(req: NextRequest) {
         channel: "wordpress",
         title: topic.trim().slice(0, 120),
         body: parsed.content_html,
-        model: GENERATION_MODEL,
-        betas: GENERATION_BETAS,
-        fallbacks: GENERATION_FALLBACKS,
+        model: msg.model,
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         created_by: user.id,
@@ -190,8 +148,8 @@ export async function POST(req: NextRequest) {
     await logApiUsage({
       userId: user.id,
       clientId,
-      provider: "anthropic",
-      model: GENERATION_MODEL,
+      provider: msg.provider,
+      model: msg.model,
       inputTokens,
       outputTokens,
     });

@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createAnthropic,
-  GENERATION_MODEL,
-  GENERATION_BETAS,
-  GENERATION_FALLBACKS,
-} from "@/lib/anthropic";
+import { generateText } from "@/lib/llm";
 import { robustJsonParse } from "@/lib/generation/json";
 import { logApiUsage } from "@/lib/usage";
 
@@ -42,45 +37,22 @@ export async function POST(req: NextRequest) {
   ].join("\n");
 
   try {
-    const anthropic = createAnthropic();
-    const msg = await anthropic.beta.messages
-      .stream({
-        model: GENERATION_MODEL,
-        betas: GENERATION_BETAS,
-        fallbacks: GENERATION_FALLBACKS,
-        max_tokens: 1500,
-        system,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: mediaType || "image/png",
-                  data: imageBase64,
-                },
-              },
-              { type: "text", text: "이 스크린샷의 수치를 추출해 JSON으로 출력." },
-            ],
-          },
-        ],
-      })
-      .finalMessage();
+    const msg = await generateText({
+      system,
+      user: "이 스크린샷의 수치를 추출해 JSON으로 출력.",
+      maxTokens: 1500,
+      image: { base64: imageBase64, mediaType: mediaType || "image/png" },
+    });
 
-    const bt = msg.content.find((b) => b.type === "text");
-    const parsed = robustJsonParse<Extracted>(
-      bt && bt.type === "text" ? bt.text : "",
-    );
+    const parsed = robustJsonParse<Extracted>(msg.text);
 
     await logApiUsage({
       userId: user.id,
       clientId: clientId ?? null,
-      provider: "anthropic",
-      model: GENERATION_MODEL,
-      inputTokens: msg.usage.input_tokens,
-      outputTokens: msg.usage.output_tokens,
+      provider: msg.provider,
+      model: msg.model,
+      inputTokens: msg.inputTokens,
+      outputTokens: msg.outputTokens,
     });
 
     if (!parsed) {

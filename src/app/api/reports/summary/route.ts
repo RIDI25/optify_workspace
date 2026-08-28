@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createAnthropic,
-  GENERATION_MODEL,
-  GENERATION_BETAS,
-  GENERATION_FALLBACKS,
-} from "@/lib/anthropic";
+import { generateText } from "@/lib/llm";
 import { logApiUsage } from "@/lib/usage";
 
 export const runtime = "nodejs";
@@ -55,28 +50,17 @@ export async function POST(req: NextRequest) {
   const user_ = `클라이언트 기간: ${yearMonth}\n\n데이터(JSON):\n${JSON.stringify(data, null, 2)}`;
 
   try {
-    const anthropic = createAnthropic();
-    const msg = await anthropic.beta.messages
-      .stream({
-        model: GENERATION_MODEL,
-        betas: GENERATION_BETAS,
-        fallbacks: GENERATION_FALLBACKS,
-        max_tokens: 2000,
-        system,
-        messages: [{ role: "user", content: user_ }],
-      })
-      .finalMessage();
+    const msg = await generateText({ system, user: user_, maxTokens: 2000 });
 
-    const bt = msg.content.find((b) => b.type === "text");
-    const summary = bt && bt.type === "text" ? bt.text.trim() : "";
+    const summary = msg.text.trim();
 
     await logApiUsage({
       userId: user.id,
       clientId: clientId ?? null,
-      provider: "anthropic",
-      model: GENERATION_MODEL,
-      inputTokens: msg.usage.input_tokens,
-      outputTokens: msg.usage.output_tokens,
+      provider: msg.provider,
+      model: msg.model,
+      inputTokens: msg.inputTokens,
+      outputTokens: msg.outputTokens,
     });
 
     return NextResponse.json({ ok: true, summary });
