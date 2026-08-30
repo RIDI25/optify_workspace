@@ -3,6 +3,7 @@ import { ClientProvider } from "@/components/providers/client-context";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { ClientTabs } from "@/components/layout/client-tabs";
+import { AssistantWidget } from "@/components/assistant/assistant-widget";
 
 export default async function AppLayout({
   children,
@@ -20,6 +21,7 @@ export default async function AppLayout({
           <ClientTabs />
           <main className="flex-1 overflow-auto bg-subtle p-6">{children}</main>
         </div>
+        <AssistantWidget />
       </div>
     </ClientProvider>
   );
