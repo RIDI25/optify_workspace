@@ -52,14 +52,13 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "add_invoice_payment",
     description:
-      "인보이스에 입금을 등록한다 (선금/잔금 분할 입금). 먼저 list_tax_invoices로 대상 인보이스 id를 찾은 뒤 호출한다. 입금 합계가 인보이스 합계에 도달하면 자동으로 입금완료 처리된다.",
+      "인보이스에 입금을 등록한다 — 선금/잔금 구분 없이 통장에 들어온 금액을 그대로 누적. 먼저 list_tax_invoices로 대상 인보이스 id를 찾은 뒤 호출한다. 입금 합계가 인보이스 합계에 도달하면 자동으로 입금완료 처리된다.",
     input_schema: {
       type: "object",
       properties: {
         invoice_id: { type: "string", description: "대상 인보이스 id (list_tax_invoices에서 획득, 필수)" },
-        amount: { type: "integer", description: "입금액 (원, 필수)" },
+        amount: { type: "integer", description: "입금액 (통장 기준, 원, 필수)" },
         paid_date: { type: "string", description: "입금일 YYYY-MM-DD (기본: 오늘)" },
-        kind: { type: "string", enum: ["deposit", "balance", "full", "other"], description: "구분: 선금/잔금/전액/기타 (기본 deposit)" },
         memo: { type: "string", description: "메모" },
       },
       required: ["invoice_id", "amount"],
@@ -302,7 +301,7 @@ export async function executeAssistantTool(
           invoice_id: invoiceId,
           paid_date: paidDate,
           amount,
-          kind: (input.kind as string) || "deposit",
+          kind: "other", // 선금/잔금 구분 없이 누적 (스키마 호환용 고정값)
           memo: (input.memo as string) || null,
         });
         if (error) return { ok: false, result: `입금 등록 실패: ${error.message}` };

@@ -2,19 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { DEPOSIT_RATE } from "@/lib/quote-config";
 import { won } from "@/lib/export/quote-model";
-import type { InvoicePayment, PaymentKind, TaxInvoice } from "@/types/database";
+import type { InvoicePayment, TaxInvoice } from "@/types/database";
 
 const input =
   "rounded-md border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-accent-deep";
-
-const KIND_LABELS: Record<PaymentKind, string> = {
-  deposit: "선금",
-  balance: "잔금",
-  full: "전액",
-  other: "기타",
-};
 
 function today(): string {
   const d = new Date();
@@ -37,7 +29,7 @@ export function PaymentsSection({
   const [showAll, setShowAll] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [drafts, setDrafts] = useState<
-    Record<string, { kind: PaymentKind; amount: string; date: string; memo: string }>
+    Record<string, { amount: string; date: string; memo: string }>
   >({});
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
@@ -63,34 +55,23 @@ export function PaymentsSection({
     0,
   );
 
-  function draftFor(inv: TaxInvoice, remaining: number) {
-    return (
-      drafts[inv.id] ?? {
-        kind: "deposit" as PaymentKind,
-        amount: String(Math.min(remaining, Math.round(Number(inv.total_amount) * DEPOSIT_RATE))),
-        date: today(),
-        memo: "",
-      }
-    );
+  /** 자동 프리필 없음 — 통장에 찍힌 금액을 그대로 입력한다 */
+  function draftFor(inv: TaxInvoice) {
+    return drafts[inv.id] ?? { amount: "", date: today(), memo: "" };
   }
 
-  function setDraft(id: string, patch: Partial<{ kind: PaymentKind; amount: string; date: string; memo: string }>, inv?: TaxInvoice, remaining?: number) {
-    setDrafts((prev) => {
-      const base = prev[id] ?? (inv ? draftFor(inv, remaining ?? 0) : { kind: "deposit" as PaymentKind, amount: "", date: today(), memo: "" });
-      const next = { ...base, ...patch };
-      // 구분 변경 시 금액 프리필 (수동 수정 가능)
-      if (patch.kind && inv) {
-        const total = Number(inv.total_amount);
-        if (patch.kind === "deposit") next.amount = String(Math.min(remaining ?? total, Math.round(total * DEPOSIT_RATE)));
-        else if (patch.kind === "balance" || patch.kind === "full") next.amount = String(remaining ?? total);
-        else next.amount = "";
-      }
-      return { ...prev, [id]: next };
-    });
+  function setDraft(
+    id: string,
+    patch: Partial<{ amount: string; date: string; memo: string }>,
+  ) {
+    setDrafts((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] ?? { amount: "", date: today(), memo: "" }), ...patch },
+    }));
   }
 
-  async function addPayment(inv: TaxInvoice, remaining: number) {
-    const d = draftFor(inv, remaining);
+  async function addPayment(inv: TaxInvoice) {
+    const d = draftFor(inv);
     const amount = Number(d.amount);
     if (!amount || amount <= 0) {
       setMsg("입금액을 입력하세요.");
@@ -103,7 +84,7 @@ export function PaymentsSection({
       invoice_id: inv.id,
       paid_date: d.date,
       amount,
-      kind: d.kind,
+      kind: "other", // 선금/잔금 구분 없이 입금액만 누적 (스키마 호환용 고정값)
       memo: d.memo || null,
     });
     if (error) {
@@ -129,7 +110,7 @@ export function PaymentsSection({
   }
 
   async function removePayment(p: InvoicePayment, inv: TaxInvoice) {
-    if (!window.confirm(`${p.paid_date} ${KIND_LABELS[p.kind]} ${won(Number(p.amount))} 입금 기록을 삭제할까요?`)) return;
+    if (!window.confirm(`${p.paid_date} ${won(Number(p.amount))} 입금 기록을 삭제할까요?`)) return;
     const supabase = createClient();
     await supabase.from("invoice_payments").delete().eq("id", p.id);
     // 완납 상태였다면 미완납으로 되돌림
@@ -175,7 +156,7 @@ export function PaymentsSection({
       ) : (
         <div className="space-y-2">
           {rows.map(({ inv, paid, remaining }) => {
-            const d = draftFor(inv, remaining);
+            const d = draftFor(inv);
             const invPayments = payments.filter((p) => p.invoice_id === inv.id);
             const isOpen = expanded.has(inv.id);
             return (
@@ -213,41 +194,35 @@ export function PaymentsSection({
 
                 {remaining > 0 && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <select
-                      value={d.kind}
-                      onChange={(e) =>
-                        setDraft(inv.id, { kind: e.target.value as PaymentKind }, inv, remaining)
-                      }
-                      className={input}
-                    >
-                      {Object.entries(KIND_LABELS).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
                     <input
                       type="number"
                       min={0}
                       value={d.amount}
-                      onChange={(e) => setDraft(inv.id, { amount: e.target.value }, inv, remaining)}
-                      placeholder="입금액 (원)"
-                      className={`w-32 text-right ${input}`}
+                      onChange={(e) => setDraft(inv.id, { amount: e.target.value })}
+                      placeholder="입금액 (통장 기준, 원)"
+                      className={`w-40 text-right ${input}`}
                     />
+                    <button
+                      onClick={() => setDraft(inv.id, { amount: String(remaining) })}
+                      className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-accent-deep"
+                      title="남은 미수금 전액을 입금액에 채웁니다"
+                    >
+                      미수 전액
+                    </button>
                     <input
                       type="date"
                       value={d.date}
-                      onChange={(e) => setDraft(inv.id, { date: e.target.value }, inv, remaining)}
+                      onChange={(e) => setDraft(inv.id, { date: e.target.value })}
                       className={input}
                     />
                     <input
                       value={d.memo}
-                      onChange={(e) => setDraft(inv.id, { memo: e.target.value }, inv, remaining)}
+                      onChange={(e) => setDraft(inv.id, { memo: e.target.value })}
                       placeholder="메모 (선택)"
                       className={`w-32 ${input}`}
                     />
                     <button
-                      onClick={() => addPayment(inv, remaining)}
+                      onClick={() => addPayment(inv)}
                       disabled={busy === inv.id}
                       className="rounded-md bg-accent px-3 py-1 text-xs font-bold text-ink hover:opacity-90 disabled:opacity-50"
                     >
@@ -262,9 +237,6 @@ export function PaymentsSection({
                       <li key={p.id} className="flex items-center justify-between text-xs">
                         <span className="text-muted">
                           {p.paid_date} ·{" "}
-                          <span className="rounded bg-tint px-1.5 py-0.5 text-accent-deep">
-                            {KIND_LABELS[p.kind]}
-                          </span>{" "}
                           <span className="font-mono text-ink">{won(Number(p.amount))}</span>
                           {p.memo && <span className="ml-1">· {p.memo}</span>}
                         </span>
