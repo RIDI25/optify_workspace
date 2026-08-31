@@ -20,6 +20,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/generate", label: "콘텐츠 생성", step: 3 },
   { href: "/library", label: "라이브러리", step: 4 },
   { href: "/reports", label: "리포트", step: 5 },
+  { href: "/tasks", label: "업무", section: "팀 운영" },
   { href: "/sales", label: "영업·리드", section: "영업", ownerOnly: true },
   { href: "/revenue", label: "매출", section: "영업", ownerOnly: true },
   { href: "/diagnosis", label: "SEO 진단", section: "영업", ownerOnly: true },

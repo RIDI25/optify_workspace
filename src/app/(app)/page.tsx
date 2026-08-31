@@ -5,12 +5,14 @@ import { channelLabel } from "@/lib/channels";
 import { planStatusLabel } from "@/lib/plan-status";
 import { autoDoneKeys } from "@/lib/onboarding";
 import { daysUntilEnd, getService, serviceLabel } from "@/lib/services";
+import { taskStatusLabel } from "@/lib/tasks";
 import type {
   Client,
   ClientService,
   Content,
   ContentPlan,
   ApiUsageLog,
+  Task,
 } from "@/types/database";
 
 function ymd(d: Date): string {
@@ -54,7 +56,7 @@ export default async function DashboardPage() {
     .select("client_id, channel, wp_app_password_encrypted");
   const kwRes = supabase.from("keywords").select("client_id");
 
-  const [clientsRes, weekPlansRes, myPlansRes, contentsRes, usageRes] =
+  const [clientsRes, weekPlansRes, myPlansRes, contentsRes, usageRes, weekTasksRes, profilesRes] =
     await Promise.all([
       supabase.from("clients").select("*"),
       supabase
@@ -77,6 +79,14 @@ export default async function DashboardPage() {
         .from("api_usage_logs")
         .select("provider, estimated_cost_usd, input_tokens, output_tokens, created_at")
         .gte("created_at", monthStart.toISOString()),
+      supabase
+        .from("tasks")
+        .select("*")
+        .gte("due_date", ymd(weekStart))
+        .lte("due_date", ymd(weekEnd))
+        .neq("status", "done")
+        .order("due_date"),
+      supabase.from("profiles").select("id, name"),
     ]);
 
   const clients = (clientsRes.data ?? []) as Client[];
@@ -90,6 +100,8 @@ export default async function DashboardPage() {
     ApiUsageLog,
     "provider" | "estimated_cost_usd"
   >[];
+  const weekTasks = (weekTasksRes.data ?? []) as Task[];
+  const teamProfiles = (profilesRes.data ?? []) as { id: string; name: string }[];
 
   const clientName = (id: string) =>
     clients.find((c) => c.id === id)?.name ?? "-";
@@ -309,6 +321,52 @@ export default async function DashboardPage() {
       {profile.role === "member" && (
         <MyPlansCard plans={myPlans} clientName={clientName} />
       )}
+
+      {/* 이번 주 업무 (담당자별) */}
+      <section className="rounded-lg border border-border bg-surface p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-ink">이번 주 업무</h2>
+          <Link href="/tasks" className="text-xs text-accent-deep hover:underline">
+            업무 보드 →
+          </Link>
+        </div>
+        {weekTasks.length === 0 ? (
+          <p className="text-sm text-muted">이번 주 마감 업무가 없습니다.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {[...teamProfiles, { id: "__none", name: "담당 미지정" }].map((p) => {
+              const mine = weekTasks.filter((t) =>
+                p.id === "__none" ? !t.assignee_id : t.assignee_id === p.id,
+              );
+              if (mine.length === 0) return null;
+              return (
+                <div key={p.id} className="rounded-md border border-border p-3">
+                  <p className="mb-2 text-xs font-semibold text-muted">
+                    {p.name} · {mine.length}건
+                  </p>
+                  <ul className="space-y-1.5">
+                    {mine.slice(0, 5).map((t) => (
+                      <li
+                        key={t.id}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span className="truncate text-ink">{t.title}</span>
+                        <span className="ml-2 shrink-0 font-mono text-xs text-muted">
+                          {t.due_date?.slice(5).replace("-", "/")} ·{" "}
+                          {taskStatusLabel(t.status)}
+                        </span>
+                      </li>
+                    ))}
+                    {mine.length > 5 && (
+                      <li className="text-xs text-muted">외 {mine.length - 5}건</li>
+                    )}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         {/* 이번 주 발행 예정 */}

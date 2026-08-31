@@ -267,6 +267,37 @@ export interface InvoicePayment extends Timestamps {
   memo: string | null;
 }
 
+/** 팀 업무 — status/task_type/priority는 lib/tasks.ts 레지스트리 키 (text) */
+export interface Task extends Timestamps {
+  id: string;
+  title: string;
+  client_id: string | null;
+  assignee_id: string | null;
+  due_date: string | null;
+  status: string;
+  task_type: string;
+  priority: string;
+  memo: string | null;
+  template_id: string | null;
+  created_by: string | null;
+  updated_at: string;
+}
+
+/** 반복 업무 템플릿 — 월 운영 계약(client_services)에 연결, cron이 매월 발행 */
+export interface TaskTemplate extends Timestamps {
+  id: string;
+  client_service_id: string;
+  title: string;
+  assignee_id: string | null;
+  issue_day: number;
+  task_type: string;
+  priority: string;
+  active: boolean;
+  last_issued_ym: string | null;
+  created_by: string | null;
+  updated_at: string;
+}
+
 export interface SeoDiagnosis extends Timestamps {
   id: string;
   url: string;
@@ -324,6 +355,8 @@ export interface Database {
       tax_invoices: TableShape<TaxInvoice>;
       invoice_payments: TableShape<InvoicePayment>;
       client_services: TableShape<ClientService>;
+      tasks: TableShape<Task>;
+      task_templates: TableShape<TaskTemplate>;
       api_usage_logs: TableShape<ApiUsageLog>;
     };
     Views: Record<string, never>;
