@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { encryptSecret, decryptSecret } from "@/lib/crypto";
 import { ensureOnboardingTasks } from "@/lib/actions/onboarding";
 
@@ -34,6 +34,51 @@ export async function saveClient(
   // 신규 고객사는 온보딩 체크리스트 자동 생성 [A-2]
   if (inserted?.id) await ensureOnboardingTasks(inserted.id);
   return { ok: true };
+}
+
+/** 고객사 삭제. owner만 — 내부 클라이언트(옵티파이)는 삭제 불가.
+ * 프리셋·키워드·플랜·콘텐츠·리포트·온보딩·계약은 FK cascade로 함께 삭제,
+ * 리드·업무·일정은 연결만 해제(set null). API 사용량 로그는 FK에 on delete가
+ * 없어 삭제를 막으므로, 로그는 보존한 채 연결만 해제한 뒤 삭제한다. */
+export async function deleteClient(
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "로그인이 필요합니다." };
+  // admin 클라이언트를 쓰기 전에 서버에서 owner를 직접 검증 (RLS와 이중 차단)
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "owner") {
+    return { ok: false, error: "owner만 삭제할 수 있습니다." };
+  }
+
+  const { data: target } = await supabase
+    .from("clients")
+    .select("id, is_internal")
+    .eq("id", id)
+    .single();
+  if (!target) return { ok: false, error: "고객사를 찾을 수 없습니다." };
+  if (target.is_internal) {
+    return { ok: false, error: "내부 클라이언트(옵티파이)는 삭제할 수 없습니다." };
+  }
+
+  const admin = createAdminClient();
+  const { error: detachErr } = await admin
+    .from("api_usage_logs")
+    .update({ client_id: null })
+    .eq("client_id", id);
+  if (detachErr) {
+    return { ok: false, error: `사용량 로그 연결 해제 실패: ${detachErr.message}` };
+  }
+
+  const { error } = await supabase.from("clients").delete().eq("id", id);
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 /** 채널 프리셋(jsonb) 저장. owner만. */

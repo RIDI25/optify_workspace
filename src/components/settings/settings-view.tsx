@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CHANNELS, channelLabel } from "@/lib/channels";
 import {
+  deleteClient,
   saveClient,
   savePreset,
   saveChannelAssignee,
@@ -127,6 +128,16 @@ export function SettingsView({ role }: { role: Role }) {
           <h2 className="text-sm font-bold text-ink">워드프레스 연결</h2>
           <WordpressTab key={activeClient.id} clients={[activeClient]} readOnly={!isOwner} />
         </section>
+
+        {isOwner && !activeClient.is_internal && (
+          <DangerZone
+            client={activeClient}
+            onDeleted={() => {
+              setActiveId(null);
+              reload();
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -343,6 +354,57 @@ function ClientCard({
         <OnboardingChecklist clientId={client.id} readOnly={readOnly} />
       )}
     </div>
+  );
+}
+
+/** 고객사 삭제 — 이름 재입력 확인 후 실행. owner 전용, 내부 클라이언트 제외 */
+function DangerZone({
+  client,
+  onDeleted,
+}: {
+  client: Client;
+  onDeleted: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  async function remove() {
+    const typed = prompt(
+      `정말 삭제하려면 고객사 이름을 그대로 입력하세요: ${client.name}\n\n프리셋·키워드·플랜·콘텐츠·리포트·온보딩·계약 정보가 함께 삭제되며 되돌릴 수 없습니다.`,
+    );
+    if (typed == null) return;
+    if (typed.trim() !== client.name) {
+      setMsg("이름이 일치하지 않아 취소했습니다.");
+      return;
+    }
+    setBusy(true);
+    setMsg("");
+    const r = await deleteClient(client.id);
+    setBusy(false);
+    if (!r.ok) {
+      setMsg(`삭제 실패: ${r.error}`);
+      return;
+    }
+    onDeleted();
+  }
+
+  return (
+    <section className="rounded-lg border border-red-200 bg-red-50/50 p-4">
+      <h2 className="text-sm font-bold text-red-600">고객사 삭제</h2>
+      <p className="mt-1 text-xs text-muted">
+        이 고객사와 프리셋·키워드·플랜·콘텐츠·리포트·온보딩·계약 정보가 함께
+        삭제됩니다. 업무·일정·리드·API 사용량 로그는 남고 이 고객사와의 연결만
+        해제됩니다. 되돌릴 수 없습니다.
+      </p>
+      {msg && <p className="mt-2 text-sm text-red-600">{msg}</p>}
+      <button
+        onClick={remove}
+        disabled={busy}
+        className="mt-3 rounded-md border border-red-300 bg-surface px-4 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-100 disabled:opacity-50"
+      >
+        {busy ? "삭제 중…" : "이 고객사 삭제"}
+      </button>
+    </section>
   );
 }
 
