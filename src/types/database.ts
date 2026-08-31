@@ -283,6 +283,20 @@ export interface Task extends Timestamps {
   updated_at: string;
 }
 
+/** 팀 일정 — event_type은 lib/schedule.ts 레지스트리 키 (text) */
+export interface CalendarEvent extends Timestamps {
+  id: string;
+  title: string;
+  event_date: string;
+  event_time: string | null;
+  event_type: string;
+  client_id: string | null;
+  assignee_id: string | null;
+  memo: string | null;
+  created_by: string | null;
+  updated_at: string;
+}
+
 /** 반복 업무 템플릿 — 월 운영 계약(client_services)에 연결, cron이 매월 발행 */
 export interface TaskTemplate extends Timestamps {
   id: string;
@@ -357,6 +371,7 @@ export interface Database {
       client_services: TableShape<ClientService>;
       tasks: TableShape<Task>;
       task_templates: TableShape<TaskTemplate>;
+      events: TableShape<CalendarEvent>;
       api_usage_logs: TableShape<ApiUsageLog>;
     };
     Views: Record<string, never>;
