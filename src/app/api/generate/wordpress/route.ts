@@ -52,13 +52,6 @@ export async function POST(req: NextRequest) {
     .eq("client_id", clientId)
     .eq("channel", "wordpress")
     .single();
-  if (!settings) {
-    return NextResponse.json(
-      { ok: false, error: "워드프레스 프리셋이 없습니다." },
-      { status: 404 },
-    );
-  }
-
   const { data: clientRow } = await supabase
     .from("clients")
     .select("is_internal")
@@ -68,7 +61,8 @@ export async function POST(req: NextRequest) {
   // 글 길이 기준 이미지 3~4장 (롱폼 기본 4장)
   const imageCount = 4;
   const { system, user: userPrompt } = buildWordpressJsonPrompt({
-    preset: settings.preset as Record<string, unknown>,
+    // 프리셋 미등록 클라이언트도 기본 설정으로 생성 (프리셋 편집 UI 제거됨)
+    preset: (settings?.preset ?? {}) as Record<string, unknown>,
     topic,
     keyword: keyword?.trim() || topic.trim(),
     extraInstructions,

@@ -6,7 +6,6 @@ import { CHANNELS, channelLabel } from "@/lib/channels";
 import {
   deleteClient,
   saveClient,
-  savePreset,
   saveChannelAssignee,
   saveChannelConnection,
   revealChannelPassword,
@@ -115,10 +114,10 @@ export function SettingsView({ role }: { role: Role }) {
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-sm font-bold text-ink">채널 프리셋</h2>
-          <PresetsTab
+          <h2 className="text-sm font-bold text-ink">채널 계정</h2>
+          <ChannelAccountsSection
             key={activeClient.id}
-            clients={[activeClient]}
+            clientId={activeClient.id}
             profiles={profiles}
             readOnly={!isOwner}
           />
@@ -336,7 +335,17 @@ function ClientCard({
             <option value="ended">종료</option>
           </select>
         </div>
-        <Field label="메모" value={memo} onChange={setMemo} disabled={readOnly} />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-muted">메모</label>
+        <textarea
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          disabled={readOnly}
+          rows={4}
+          placeholder="고객사 관련 메모 — 소통 내역, 특이사항, 요청사항 등"
+          className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
+        />
       </div>
       {!readOnly && (
         <div className="flex items-center gap-2">
@@ -485,397 +494,87 @@ function OnboardingChecklist({
   );
 }
 
-/** 말투 템플릿 — 폼에서 선택하면 tone_rules로 저장된다 */
-const TONE_PRESETS: { key: string; label: string; rules: string[] }[] = [
-  {
-    key: "consult",
-    label: "전문가 상담형 — '~합니다' 기본 + '~해요' 혼합",
-    rules: [
-      "'~합니다/~입니다' 체를 기본으로 '~해요/~인데요'를 섞어 옆에서 상담하듯 편하게",
-      "과장 없이 근거 중심으로, 신뢰감은 유지하되 경직되지 않게",
-    ],
-  },
-  {
-    key: "friendly",
-    label: "친근한 이웃형 — '~해요' 위주",
-    rules: [
-      "'~해요/~인데요' 체 위주로 이웃에게 이야기하듯 편하게",
-      "쉬운 단어로 짧게 끊어 쓰고, 독자가 겪는 장면에서 출발",
-    ],
-  },
-  {
-    key: "formal",
-    label: "격식 정보형 — '~입니다' 위주",
-    rules: [
-      "'~입니다/~합니다' 체로 정확하고 담백하게",
-      "감탄사·이모지 없이 정보 중심으로",
-    ],
-  },
-];
-
-function PresetsTab({
-  clients,
+/** 채널 계정·기본 담당자 — 채널을 고르면 로그인 정보 공유와
+ * 플랜 자동 배정용 기본 담당자를 관리한다. */
+function ChannelAccountsSection({
+  clientId,
   profiles,
   readOnly,
 }: {
-  clients: Client[];
+  clientId: string;
   profiles: Profile[];
   readOnly: boolean;
 }) {
-  const [clientId, setClientId] = useState("");
+  const [channel, setChannel] = useState(CHANNELS[0]?.key ?? "");
   const [settings, setSettings] = useState<ChannelSettings[]>([]);
-  const [channel, setChannel] = useState("");
-  const [json, setJson] = useState("");
-  const [msg, setMsg] = useState("");
-  // 폼 편집 상태 (JSON은 고급용으로만 유지)
-  const [persona, setPersona] = useState("");
-  const [targetReader, setTargetReader] = useState("");
-  const [toneKey, setToneKey] = useState("consult");
-  const [extraRules, setExtraRules] = useState("");
-  const [hasExistingTone, setHasExistingTone] = useState(false);
-  /** 폼 저장의 기준이 되는 전체 프리셋 (AI 초안 포함) — 폼에 없는 키를 보존한다 */
-  const [baseline, setBaseline] = useState<Record<string, unknown>>({});
   const [assigneeMsg, setAssigneeMsg] = useState("");
-  // AI 프리셋 초안 [A-3]
-  const [draftOpen, setDraftOpen] = useState(false);
-  const [refBlog, setRefBlog] = useState("");
-  const [refHome, setRefHome] = useState("");
-  const [refTarget, setRefTarget] = useState("");
-  const [draftBusy, setDraftBusy] = useState(false);
-  const [draftMsg, setDraftMsg] = useState("");
-  const cid = clientId || clients[0]?.id || "";
 
-  /** 프리셋 객체 → 폼 필드 + JSON 편집기 동기화 */
-  function applyPreset(preset: Record<string, unknown>) {
-    setBaseline(preset);
-    setJson(JSON.stringify(preset, null, 2));
-    setPersona(typeof preset.persona === "string" ? preset.persona : "");
-    setTargetReader(
-      typeof preset.target_reader === "string" ? preset.target_reader : "",
-    );
-    const existingTone = Array.isArray(preset.tone_rules) && preset.tone_rules.length > 0;
-    setHasExistingTone(existingTone);
-    setToneKey(existingTone ? "keep" : "consult");
-    setExtraRules(
-      Array.isArray(preset.extra_rules) ? preset.extra_rules.join("\n") : "",
-    );
-  }
-
-  async function loadSettings(keepChannel?: string) {
+  async function load() {
     const { data } = await createClient()
       .from("channel_settings")
-      .select("id, channel, preset, default_assignee")
-      .eq("client_id", cid);
-    const rows = (data ?? []) as ChannelSettings[];
-    setSettings(rows);
-    // 등록된 첫 채널 → 없으면 레지스트리 첫 채널 (미등록이어도 선택·저장 가능해야 한다)
-    const ch = keepChannel ?? rows[0]?.channel ?? CHANNELS[0]?.key ?? "";
-    setChannel(ch);
-    const s = rows.find((x) => x.channel === ch);
-    applyPreset(s?.preset ?? {});
-    return rows;
+      .select("id, channel, default_assignee")
+      .eq("client_id", clientId);
+    setSettings((data ?? []) as ChannelSettings[]);
   }
-
   useEffect(() => {
-    if (!cid) return;
-    loadSettings();
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cid]);
-
-  // 레지스트리 전체 + (레지스트리에 없지만 DB에 있는) 채널의 합집합
-  const channelOptions = [
-    ...CHANNELS.map((c) => c.key),
-    ...settings.map((s) => s.channel).filter((ch) => !CHANNELS.some((c) => c.key === ch)),
-  ];
-  const isRegistered = (ch: string) => settings.some((s) => s.channel === ch);
-
-  function selectChannel(ch: string) {
-    setChannel(ch);
-    const s = settings.find((x) => x.channel === ch);
-    applyPreset(s?.preset ?? {});
-  }
+  }, [clientId]);
 
   const currentAssignee =
     settings.find((s) => s.channel === channel)?.default_assignee ?? "";
 
   async function changeAssignee(value: string) {
     const assignee = value || null;
-    const wasNew = !isRegistered(channel);
     setSettings((prev) =>
       prev.map((s) =>
         s.channel === channel ? { ...s, default_assignee: assignee } : s,
       ),
     );
-    const r = await saveChannelAssignee(cid, channel, assignee);
-    if (r.ok && wasNew) await loadSettings(channel); // upsert로 행이 생성됨
+    const r = await saveChannelAssignee(clientId, channel, assignee);
+    if (r.ok) await load(); // 미등록 채널이면 upsert로 행이 생성된다
     setAssigneeMsg(r.ok ? "기본 담당자 저장됨" : `실패: ${r.error}`);
     setTimeout(() => setAssigneeMsg(""), 2000);
   }
 
-  async function persist(preset: Record<string, unknown>) {
-    const wasNew = !isRegistered(channel);
-    const r = await savePreset(cid, channel, preset);
-    if (r.ok) {
-      // 신규 채널이면 행이 생성됐으니 목록 갱신 (담당자 지정도 바로 가능해진다)
-      await loadSettings(channel);
-      setMsg(wasNew ? "채널 등록 + 프리셋 저장됨" : "저장됨");
-    } else {
-      setMsg(`실패: ${r.error}`);
-    }
-    setTimeout(() => setMsg(""), 2500);
-  }
-
-  /** 폼 값으로 프리셋 조립 — 기준 프리셋(AI 초안 포함)의 다른 키는 그대로 보존 */
-  async function saveForm() {
-    const base: Record<string, unknown> = { ...baseline };
-    if (persona.trim()) base.persona = persona.trim();
-    else delete base.persona;
-    if (targetReader.trim()) base.target_reader = targetReader.trim();
-    else delete base.target_reader;
-    const tone = TONE_PRESETS.find((t) => t.key === toneKey);
-    if (tone) base.tone_rules = tone.rules; // 'keep'이면 기존 tone_rules 유지
-    const extras = extraRules
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (extras.length) base.extra_rules = extras;
-    else delete base.extra_rules;
-    await persist(base);
-  }
-
-  /** 고급 — JSON 직접 저장 */
-  async function saveJson() {
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(json);
-    } catch {
-      setMsg("JSON 형식 오류 — 폼으로 저장하면 형식 걱정 없이 저장됩니다.");
-      setTimeout(() => setMsg(""), 3000);
-      return;
-    }
-    await persist(parsed);
-  }
-
-  async function genDraft() {
-    if (!channel) return;
-    setDraftBusy(true);
-    setDraftMsg("");
-    try {
-      const res = await fetch("/api/settings/preset-draft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId: cid,
-          channel,
-          references: { blog: refBlog, homepage: refHome, target: refTarget },
-        }),
-      });
-      const d = await res.json();
-      if (d.ok) {
-        applyPreset(d.preset);
-        setDraftOpen(false);
-        setMsg("초안 생성됨 — 폼에서 검토 후 '프리셋 저장'을 누르세요.");
-        setTimeout(() => setMsg(""), 3000);
-      } else {
-        setDraftMsg(`실패: ${d.error}`);
-      }
-    } catch (e) {
-      setDraftMsg(e instanceof Error ? e.message : "초안 생성 실패");
-    } finally {
-      setDraftBusy(false);
-    }
-  }
-
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
+    <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {CHANNELS.map((c) => (
+          <button
+            key={c.key}
+            onClick={() => setChannel(c.key)}
+            className={[
+              "rounded-md border px-3 py-1.5 text-sm font-medium",
+              channel === c.key
+                ? "border-accent-deep bg-tint text-accent-deep"
+                : "border-border text-muted hover:text-ink",
+            ].join(" ")}
+          >
+            {channelLabel(c.key)}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-xs font-medium text-muted">
+          이 채널 기본 담당자 (플랜 자동 배정)
+        </label>
         <select
-          value={cid}
-          onChange={(e) => setClientId(e.target.value)}
-          className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
+          value={currentAssignee}
+          onChange={(e) => changeAssignee(e.target.value)}
+          disabled={readOnly}
+          className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm disabled:bg-subtle"
         >
-          {clients.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
+          <option value="">미지정</option>
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
             </option>
           ))}
         </select>
-        <select
-          value={channel}
-          onChange={(e) => selectChannel(e.target.value)}
-          className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm"
-        >
-          {channelOptions.map((ch) => (
-            <option key={ch} value={ch}>
-              {channelLabel(ch)}
-              {isRegistered(ch) ? "" : " (미등록)"}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-2 text-sm text-muted">
-          기본 담당자
-          <select
-            value={currentAssignee}
-            onChange={(e) => changeAssignee(e.target.value)}
-            disabled={readOnly || !channel}
-            className="rounded-md border border-border bg-surface px-3 py-1.5 text-sm text-ink disabled:bg-subtle"
-          >
-            <option value="">없음</option>
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.role === "owner" ? "관리자" : "멤버"})
-              </option>
-            ))}
-          </select>
-        </label>
-        {assigneeMsg && (
-          <span className="self-center text-xs text-muted">{assigneeMsg}</span>
-        )}
+        {assigneeMsg && <span className="text-xs text-muted">{assigneeMsg}</span>}
       </div>
-      {/* 프리셋 폼 — JSON 없이 고르고 입력해서 저장 */}
-      <div className="space-y-3 rounded-lg border border-border bg-surface p-4">
-        <h3 className="text-sm font-semibold text-ink">
-          글 스타일 프리셋 — {channelLabel(channel)}
-        </h3>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <label className="space-y-1">
-            <span className="text-xs font-medium text-muted">
-              페르소나 (누가 쓰는 글인가)
-            </span>
-            <input
-              value={persona}
-              onChange={(e) => setPersona(e.target.value)}
-              disabled={readOnly}
-              placeholder="예: 15년차 인테리어 전문가가 상담하듯 알려주는 글"
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-medium text-muted">
-              대상 독자 (누가 읽는 글인가)
-            </span>
-            <input
-              value={targetReader}
-              onChange={(e) => setTargetReader(e.target.value)}
-              disabled={readOnly}
-              placeholder="예: 사무실 이전·인테리어를 알아보는 중소기업 대표"
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
-            />
-          </label>
-        </div>
-        <label className="block space-y-1">
-          <span className="text-xs font-medium text-muted">말투</span>
-          <select
-            value={toneKey}
-            onChange={(e) => setToneKey(e.target.value)}
-            disabled={readOnly}
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm disabled:bg-subtle md:w-auto"
-          >
-            {hasExistingTone && (
-              <option value="keep">기존 말투 규칙 유지</option>
-            )}
-            {TONE_PRESETS.map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-medium text-muted">
-            추가 규칙 (선택 — 한 줄에 하나씩)
-          </span>
-          <textarea
-            value={extraRules}
-            onChange={(e) => setExtraRules(e.target.value)}
-            disabled={readOnly}
-            rows={3}
-            placeholder={"예:\n가격은 구체 금액 대신 범위로만 언급\n마무리에 상담 유도 문구 넣지 않기"}
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep disabled:bg-subtle"
-          />
-        </label>
-        {!readOnly && (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={saveForm}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-bold text-ink hover:opacity-90"
-            >
-              프리셋 저장
-            </button>
-            <button
-              onClick={() => setDraftOpen(true)}
-              disabled={!channel}
-              className="rounded-md border border-accent-deep px-3 py-1.5 text-sm font-medium text-accent-deep hover:bg-tint disabled:opacity-50"
-            >
-              AI로 프리셋 초안 생성
-            </button>
-            {msg && <span className="text-xs text-muted">{msg}</span>}
-          </div>
-        )}
-      </div>
-
-      {/* 채널 계정/연결 정보 — 워드프레스는 전용 탭 사용 */}
-      {channel !== "wordpress" && (
-        <ChannelConnection cid={cid} channel={channel} readOnly={readOnly} />
-      )}
-
-      {/* 고급 — JSON 직접 편집 */}
-      <details className="rounded-lg border border-border bg-surface p-4">
-        <summary className="cursor-pointer text-sm font-medium text-muted">
-          고급 — 프리셋 JSON 직접 편집
-        </summary>
-        <div className="mt-3 space-y-2">
-          <textarea
-            value={json}
-            onChange={(e) => setJson(e.target.value)}
-            disabled={readOnly}
-            rows={16}
-            className="w-full rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs outline-none focus:border-accent-deep disabled:bg-subtle"
-          />
-          {!readOnly && (
-            <button
-              onClick={saveJson}
-              className="rounded-md border border-border px-3 py-1.5 text-sm text-ink hover:bg-subtle"
-            >
-              JSON으로 저장
-            </button>
-          )}
-        </div>
-      </details>
-
-      {/* AI 프리셋 초안 모달 [A-3] */}
-      {draftOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-          <div className="w-full max-w-lg space-y-3 rounded-xl border border-border bg-surface p-5 shadow-lg">
-            <h3 className="text-base font-bold text-ink">
-              AI 프리셋 초안 생성 ({channelLabel(channel)})
-            </h3>
-            <p className="text-xs text-muted">
-              참고 자료를 넣을수록 정확해집니다. 생성 후 편집기에서 검토·수정하고
-              저장하세요.
-            </p>
-            <TextArea label="홈페이지 소개 텍스트" value={refHome} onChange={setRefHome} />
-            <TextArea label="타겟 독자 설명" value={refTarget} onChange={setRefTarget} />
-            <TextArea label="기존 블로그 글 예시(붙여넣기)" value={refBlog} onChange={setRefBlog} />
-            {draftMsg && <p className="text-xs text-red-600">{draftMsg}</p>}
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setDraftOpen(false)}
-                className="rounded-md border border-border px-3 py-2 text-sm hover:bg-subtle"
-              >
-                취소
-              </button>
-              <button
-                onClick={genDraft}
-                disabled={draftBusy}
-                className="rounded-md bg-accent px-3 py-2 text-sm font-semibold text-ink hover:opacity-90 disabled:opacity-50"
-              >
-                {draftBusy ? "생성 중…" : "초안 생성"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ChannelConnection cid={clientId} channel={channel} readOnly={readOnly} />
     </div>
   );
 }
@@ -1119,28 +818,6 @@ function ChannelConnection({
         비밀번호는 암호화되어 저장되고, [보기]를 눌렀을 때만 서버에서 복호화해
         보여줍니다.
       </p>
-    </div>
-  );
-}
-
-function TextArea({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="text-xs font-medium text-muted">{label}</label>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        rows={3}
-        className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent-deep"
-      />
     </div>
   );
 }

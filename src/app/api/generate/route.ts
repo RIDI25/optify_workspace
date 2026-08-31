@@ -50,19 +50,14 @@ export async function POST(req: NextRequest) {
     .eq("channel", body.channel)
     .single();
 
-  if (!settings) {
-    return new Response("해당 클라이언트/채널의 프리셋이 없습니다.", {
-      status: 404,
-    });
-  }
-
   const { data: clientRow } = await supabase
     .from("clients")
     .select("is_internal")
     .eq("id", body.clientId)
     .single();
 
-  const preset = settings.preset as Record<string, unknown>;
+  // 프리셋 미등록 클라이언트도 기본 설정으로 생성 (프리셋 편집 UI 제거됨)
+  const preset = (settings?.preset ?? {}) as Record<string, unknown>;
   const system = buildSystemPrompt({
     channel: body.channel,
     preset,

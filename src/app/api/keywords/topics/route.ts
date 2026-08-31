@@ -30,10 +30,6 @@ export async function POST(req: NextRequest) {
     .eq("client_id", clientId)
     .eq("channel", channel)
     .single();
-  if (!settings) {
-    return NextResponse.json({ ok: false, error: "채널 프리셋이 없습니다." });
-  }
-
   const { data: clientRow } = await supabase
     .from("clients")
     .select("is_internal")
@@ -42,7 +38,8 @@ export async function POST(req: NextRequest) {
 
   const { system, user: userPrompt } = buildTopicsPrompt({
     channel,
-    preset: settings.preset as Record<string, unknown>,
+    // 프리셋 미등록 클라이언트도 기본 설정으로 동작 (프리셋 편집 UI 제거됨)
+    preset: (settings?.preset ?? {}) as Record<string, unknown>,
     keywords,
     isInternalClient: clientRow?.is_internal ?? false,
   });
