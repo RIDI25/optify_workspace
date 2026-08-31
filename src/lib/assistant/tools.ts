@@ -7,6 +7,14 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Anthropic from "@anthropic-ai/sdk";
+import {
+  TASK_PRIORITIES,
+  TASK_STATUSES,
+  TASK_TYPES,
+  taskStatusLabel,
+  taskTypeLabel,
+} from "@/lib/tasks";
+import { EVENT_TYPES, eventTypeLabel } from "@/lib/schedule";
 
 export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
@@ -78,6 +86,91 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
       required: ["company_name"],
     },
   },
+  {
+    name: "create_task",
+    description:
+      "팀 업무(태스크)를 등록한다. '동생한테 ~ 시켜놔', '~ 할 일 추가해줘' 류 요청에 사용. 마감 자연어('금요일까지', '다음 주 초')는 오늘(KST) 기준 YYYY-MM-DD로 변환해 전달할 것.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "업무 제목 (필수)" },
+        assignee: { type: "string", description: "'me'(요청자 본인) | 'member'(동생/직원) | 팀원 이름. 생략 시 me" },
+        due_date: { type: "string", description: "마감일 YYYY-MM-DD (선택)" },
+        client_name: { type: "string", description: "관련 클라이언트명 (선택, 부분 일치로 연결)" },
+        task_type: { type: "string", enum: TASK_TYPES.map((t) => t.key), description: "제작(build)/콘텐츠(content)/서무(admin)/응대(support)/운영(ops), 기본 ops" },
+        priority: { type: "string", enum: TASK_PRIORITIES.map((p) => p.key), description: "우선순위 (기본 normal)" },
+        memo: { type: "string", description: "메모" },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "list_tasks",
+    description:
+      "팀 업무 목록을 조회한다. '내 업무 뭐 있어?', '동생 이번 주 할 일 알려줘' 류 요청과, 상태 변경 전 대상 업무 id를 찾을 때 사용.",
+    input_schema: {
+      type: "object",
+      properties: {
+        assignee: { type: "string", description: "'me' | 'member' | 'all'(기본) | 팀원 이름" },
+        status: { type: "string", description: "'open'(미완료, 기본) | 'all' | todo/in_progress/review/done" },
+        limit: { type: "integer", description: "최대 건수 (기본 15)" },
+      },
+    },
+  },
+  {
+    name: "update_task_status",
+    description:
+      "업무 상태를 변경한다. '그 건 끝났어/완료 처리해줘' 류 요청에 사용. 먼저 list_tasks로 대상 업무 id를 확인한 뒤 호출한다.",
+    input_schema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "대상 업무 id (list_tasks에서 획득, 필수)" },
+        status: { type: "string", enum: TASK_STATUSES.map((s) => s.key), description: "변경할 상태 (필수)" },
+      },
+      required: ["task_id", "status"],
+    },
+  },
+  {
+    name: "list_schedule",
+    description:
+      "일정을 조회한다 — 등록된 일정 + 업무 마감 + 세금계산서 발행일을 함께 보여준다. '다음 주 일정 뭐 있어?' 류 요청에 사용. 자연어 기간은 KST 기준 날짜로 변환해 전달할 것.",
+    input_schema: {
+      type: "object",
+      properties: {
+        date_from: { type: "string", description: "조회 시작일 YYYY-MM-DD (기본: 오늘)" },
+        date_to: { type: "string", description: "조회 종료일 YYYY-MM-DD (기본: 시작일+7일)" },
+      },
+    },
+  },
+  {
+    name: "create_event",
+    description:
+      "일정을 등록한다. '수요일 2시 OO 미팅 잡아줘' 류 요청에 사용. 자연어 날짜·시간은 KST 기준 YYYY-MM-DD, HH:MM으로 변환해 전달할 것.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "일정 제목 (필수)" },
+        event_date: { type: "string", description: "날짜 YYYY-MM-DD (필수)" },
+        event_time: { type: "string", description: "시간 HH:MM 24시간제 (선택)" },
+        event_type: { type: "string", enum: EVENT_TYPES.map((t) => t.key), description: "미팅(meeting)/마감(deadline)/발행(publish)/기타(etc), 기본 meeting" },
+        client_name: { type: "string", description: "관련 클라이언트명 (선택, 부분 일치로 연결)" },
+        assignee: { type: "string", description: "'me' | 'member' | 팀원 이름 (선택)" },
+        memo: { type: "string", description: "메모" },
+      },
+      required: ["title", "event_date"],
+    },
+  },
+  {
+    name: "get_revenue_summary",
+    description:
+      "월별 매출 요약을 조회한다 — 해당 월 세금계산서 발행 합계, 입금 합계, 현재 전체 미수금. owner 전용 (member 요청 시 권한 안내).",
+    input_schema: {
+      type: "object",
+      properties: {
+        month: { type: "string", description: "조회 월 YYYY-MM (기본: 이번 달)" },
+      },
+    },
+  },
 ];
 
 function kstToday(): string {
@@ -86,11 +179,49 @@ function kstToday(): string {
 
 const wonFmt = (n: number) => `${Math.round(n).toLocaleString("ko-KR")}원`;
 
+const DOW_KO = ["일", "월", "화", "수", "목", "금", "토"];
+const dowOf = (ymd: string) => DOW_KO[new Date(`${ymd}T00:00:00+09:00`).getUTCDay()] ?? "";
+
+/** '동생/직원'(member)·'나'(요청자)·팀원 이름 → 프로필 해석 */
+async function resolveAssignee(
+  supabase: SupabaseClient,
+  userId: string,
+  raw: unknown,
+): Promise<{ id: string | null; name: string } | { error: string }> {
+  const v = String(raw ?? "").trim();
+  if (!v) return { id: null, name: "미지정" };
+  if (v === "me") {
+    const { data } = await supabase.from("profiles").select("name").eq("id", userId).single();
+    return { id: userId, name: data?.name ?? "나" };
+  }
+  if (v === "member") {
+    const { data } = await supabase.from("profiles").select("id, name").eq("role", "member").limit(1);
+    if (!data?.length) return { error: "member 프로필이 아직 없습니다. 담당 없이 등록하려면 assignee를 비워주세요." };
+    return { id: data[0].id, name: data[0].name };
+  }
+  const { data } = await supabase.from("profiles").select("id, name").ilike("name", `%${v}%`).limit(1);
+  if (!data?.length) return { error: `'${v}' 이름의 팀원을 찾지 못했습니다.` };
+  return { id: data[0].id, name: data[0].name };
+}
+
+/** 클라이언트명 부분 일치 → id. 못 찾으면 연결 없이 진행 (note로 알림) */
+async function resolveClient(
+  supabase: SupabaseClient,
+  raw: unknown,
+): Promise<{ id: string | null; name: string | null; note: string }> {
+  const v = String(raw ?? "").trim();
+  if (!v) return { id: null, name: null, note: "" };
+  const { data } = await supabase.from("clients").select("id, name").ilike("name", `%${v}%`).limit(1);
+  if (!data?.length) return { id: null, name: null, note: ` (클라이언트 '${v}'를 못 찾아 연결 없이 등록)` };
+  return { id: data[0].id, name: data[0].name, note: "" };
+}
+
 /** 도구 실행 — 결과는 모델이 읽는 한국어 요약 문자열(JSON) */
 export async function executeAssistantTool(
   supabase: SupabaseClient,
   name: string,
   input: Record<string, unknown>,
+  ctx: { userId: string },
 ): Promise<{ ok: boolean; result: string }> {
   try {
     switch (name) {
@@ -212,6 +343,178 @@ export async function executeAssistantTool(
         return {
           ok: true,
           result: `리드 등록 완료 — ${row.company_name}${row.industry ? ` (${row.industry})` : ""}${row.next_followup ? `, 팔로업 ${row.next_followup}` : ""}. 영업·리드 메뉴에서 확인 가능.`,
+        };
+      }
+      case "create_task": {
+        if (!input.title) return { ok: false, result: "업무 제목이 필요합니다." };
+        const assignee = await resolveAssignee(supabase, ctx.userId, input.assignee ?? "me");
+        if ("error" in assignee) return { ok: false, result: assignee.error };
+        const client = await resolveClient(supabase, input.client_name);
+        const row = {
+          title: String(input.title).trim(),
+          client_id: client.id,
+          assignee_id: assignee.id,
+          due_date: (input.due_date as string) || null,
+          status: "todo",
+          task_type: (input.task_type as string) || "ops",
+          priority: (input.priority as string) || "normal",
+          memo: (input.memo as string) || null,
+          created_by: ctx.userId,
+        };
+        const { error } = await supabase.from("tasks").insert(row);
+        if (error) return { ok: false, result: `업무 등록 실패: ${error.message}` };
+        return {
+          ok: true,
+          result: `업무 등록 완료 — "${row.title}" (담당 ${assignee.name}${row.due_date ? `, 마감 ${row.due_date}` : ""}${client.name ? `, ${client.name}` : ""})${client.note}. 업무 메뉴에서 확인 가능.`,
+        };
+      }
+      case "list_tasks": {
+        const statusIn = String(input.status ?? "open");
+        let q = supabase
+          .from("tasks")
+          .select("id, title, status, due_date, assignee_id, client_id, priority")
+          .order("due_date", { ascending: true, nullsFirst: false })
+          .limit(Math.min(Number(input.limit) || 15, 30));
+        if (statusIn === "open") q = q.neq("status", "done");
+        else if (statusIn !== "all") q = q.eq("status", statusIn);
+        const assigneeIn = String(input.assignee ?? "all");
+        if (assigneeIn !== "all") {
+          const a = await resolveAssignee(supabase, ctx.userId, assigneeIn);
+          if ("error" in a) return { ok: false, result: a.error };
+          if (a.id) q = q.eq("assignee_id", a.id);
+        }
+        const { data, error } = await q;
+        if (error) return { ok: false, result: `조회 실패: ${error.message}` };
+        if (!data?.length) return { ok: true, result: "해당하는 업무가 없습니다." };
+        const { data: profs } = await supabase.from("profiles").select("id, name");
+        const { data: cls } = await supabase.from("clients").select("id, name");
+        const pName = new Map((profs ?? []).map((p) => [p.id, p.name]));
+        const cName = new Map((cls ?? []).map((c) => [c.id, c.name]));
+        return {
+          ok: true,
+          result: data
+            .map(
+              (t) =>
+                `id=${t.id} | ${t.title} | 담당 ${t.assignee_id ? (pName.get(t.assignee_id) ?? "-") : "미지정"} | ${taskStatusLabel(t.status)}${t.due_date ? ` | 마감 ${t.due_date}(${dowOf(t.due_date)})` : ""}${t.client_id ? ` | ${cName.get(t.client_id) ?? ""}` : ""}${t.priority === "high" ? " | 우선순위 높음" : ""}`,
+            )
+            .join("\n"),
+        };
+      }
+      case "update_task_status": {
+        const taskId = String(input.task_id || "");
+        const status = String(input.status || "");
+        if (!taskId || !status) return { ok: false, result: "task_id와 status가 필요합니다." };
+        const { data: task, error: tErr } = await supabase
+          .from("tasks")
+          .select("id, title")
+          .eq("id", taskId)
+          .single();
+        if (tErr || !task) return { ok: false, result: "해당 업무를 찾을 수 없습니다." };
+        const { error } = await supabase
+          .from("tasks")
+          .update({ status, updated_at: new Date().toISOString() })
+          .eq("id", taskId);
+        if (error) return { ok: false, result: `상태 변경 실패: ${error.message}` };
+        return { ok: true, result: `상태 변경 완료 — "${task.title}" → ${taskStatusLabel(status)}.` };
+      }
+      case "list_schedule": {
+        const from = (input.date_from as string) || kstToday();
+        const to =
+          (input.date_to as string) ||
+          new Date(new Date(`${from}T00:00:00+09:00`).getTime() + 7 * 86_400_000)
+            .toISOString()
+            .slice(0, 10);
+        const [evRes, taskRes, invRes, profs] = await Promise.all([
+          supabase.from("events").select("*").gte("event_date", from).lte("event_date", to).order("event_date"),
+          supabase
+            .from("tasks")
+            .select("title, due_date, assignee_id, status")
+            .gte("due_date", from)
+            .lte("due_date", to)
+            .neq("status", "done"),
+          supabase.from("tax_invoices").select("counterparty, issue_date").gte("issue_date", from).lte("issue_date", to).neq("status", "cancelled"),
+          supabase.from("profiles").select("id, name"),
+        ]);
+        const pName = new Map((profs.data ?? []).map((p) => [p.id, p.name]));
+        const lines: { date: string; time: string; text: string }[] = [];
+        for (const e of evRes.data ?? []) {
+          lines.push({
+            date: e.event_date,
+            time: e.event_time ? e.event_time.slice(0, 5) : "",
+            text: `[일정·${eventTypeLabel(e.event_type)}] ${e.event_time ? `${e.event_time.slice(0, 5)} ` : ""}${e.title}${e.assignee_id ? ` (${pName.get(e.assignee_id) ?? ""})` : ""}`,
+          });
+        }
+        for (const t of taskRes.data ?? []) {
+          lines.push({
+            date: t.due_date as string,
+            time: "98",
+            text: `[업무 마감] ${t.title}${t.assignee_id ? ` (담당 ${pName.get(t.assignee_id) ?? ""})` : ""}`,
+          });
+        }
+        for (const inv of invRes.data ?? []) {
+          lines.push({ date: inv.issue_date, time: "99", text: `[세금계산서] ${inv.counterparty} 발행일` });
+        }
+        if (!lines.length) return { ok: true, result: `${from} ~ ${to} 사이 일정이 없습니다.` };
+        lines.sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
+        return {
+          ok: true,
+          result: lines.map((l) => `${l.date}(${dowOf(l.date)}) ${l.text}`).join("\n"),
+        };
+      }
+      case "create_event": {
+        if (!input.title || !input.event_date) {
+          return { ok: false, result: "일정 제목과 날짜가 필요합니다." };
+        }
+        const assignee = await resolveAssignee(supabase, ctx.userId, input.assignee);
+        if ("error" in assignee) return { ok: false, result: assignee.error };
+        const client = await resolveClient(supabase, input.client_name);
+        const row = {
+          title: String(input.title).trim(),
+          event_date: String(input.event_date),
+          event_time: (input.event_time as string) || null,
+          event_type: (input.event_type as string) || "meeting",
+          client_id: client.id,
+          assignee_id: assignee.id,
+          memo: (input.memo as string) || null,
+          created_by: ctx.userId,
+        };
+        const { error } = await supabase.from("events").insert(row);
+        if (error) return { ok: false, result: `일정 등록 실패: ${error.message}` };
+        return {
+          ok: true,
+          result: `일정 등록 완료 — ${row.event_date}(${dowOf(row.event_date)})${row.event_time ? ` ${row.event_time}` : ""} "${row.title}" (${eventTypeLabel(row.event_type)})${client.note}. 스케줄 메뉴에서 확인 가능.`,
+        };
+      }
+      case "get_revenue_summary": {
+        // owner 전용 — RLS로도 차단되지만, member에게는 명확한 권한 안내를 준다
+        const { data: prof } = await supabase.from("profiles").select("role").eq("id", ctx.userId).single();
+        if (prof?.role !== "owner") {
+          return { ok: false, result: "매출 요약은 owner 전용입니다." };
+        }
+        const month = (input.month as string) || kstToday().slice(0, 7);
+        const start = `${month}-01`;
+        const [y, m] = month.split("-").map(Number);
+        const end = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10); // 다음 달 1일
+        const [invRes, payRes, allInvRes, allPayRes] = await Promise.all([
+          supabase
+            .from("tax_invoices")
+            .select("supply_amount, vat_amount, total_amount")
+            .gte("issue_date", start)
+            .lt("issue_date", end)
+            .neq("status", "cancelled"),
+          supabase.from("invoice_payments").select("amount").gte("paid_date", start).lt("paid_date", end),
+          supabase.from("tax_invoices").select("total_amount").neq("status", "cancelled"),
+          supabase.from("invoice_payments").select("amount"),
+        ]);
+        const inv = invRes.data ?? [];
+        const supply = inv.reduce((s, i) => s + Number(i.supply_amount), 0);
+        const total = inv.reduce((s, i) => s + Number(i.total_amount), 0);
+        const paidMonth = (payRes.data ?? []).reduce((s, p) => s + Number(p.amount), 0);
+        const allTotal = (allInvRes.data ?? []).reduce((s, i) => s + Number(i.total_amount), 0);
+        const allPaid = (allPayRes.data ?? []).reduce((s, p) => s + Number(p.amount), 0);
+        return {
+          ok: true,
+          result: `${month} 매출 요약 — 발행 ${inv.length}건: 공급가 ${wonFmt(supply)}, 합계 ${wonFmt(total)} · 이 달 입금 ${wonFmt(paidMonth)} · 현재 전체 미수금 ${wonFmt(Math.max(0, allTotal - allPaid))}.`,
         };
       }
       default:

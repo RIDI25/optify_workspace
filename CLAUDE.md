@@ -40,7 +40,12 @@ Phase 1 완료(생성 엔진·WP/네이버/스레드·키워드·플랜·라이�
 거래 경로 구분(`lib/deal-channels.ts`): 직접/소개/파트너 경유 — 파트너 경유 건은 세금계산서 거래처=파트너(partner_name),
 실고객은 end_client_name(문서에 '건명'으로 표기). 매출 대시보드에 경로별 수주 구성 집계.
 /revenue 매출: 세금계산서 발행 이력 수기 입력(수주 견적 프리필 지원) — 발행/입금/미수금 집계 + 거래처별 월 적층 차트.
-DB: `supabase/migrations/0001~0019`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services).
+팀 운영 축(owner·member 공용): /tasks 업무 보드(목록·칸반 드래그, 레지스트리 `lib/tasks.ts`) + 반복 업무 템플릿(월 운영
+계약 연결, `/api/tasks/cron`이 매일 KST 00:20에 발행일 체크 — vercel.json crons) + /schedule 캘린더(events+업무
+마감+계산서 발행일 병합, 레지스트리 `lib/schedule.ts`) + 대시보드 '이번 주 업무' 위젯.
+AI 비서(우하단 위젯 → `/api/assistant`, Claude Opus 5 tool-use 루프, 도구는 `lib/assistant/tools.ts` 레지스트리):
+세금계산서·입금·리드 등록 + 업무·일정 등록/조회/상태 변경 + 매출 요약(owner 전용). 실행은 사용자 세션 → RLS 적용.
+DB: `supabase/migrations/0001~0022`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)
