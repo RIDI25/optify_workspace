@@ -4,34 +4,19 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  DOW_KO_MON as DOW,
   EVENT_TYPES,
   SOURCE_LABELS,
   SOURCE_STYLES,
+  buildMonthGrid,
   eventTypeLabel,
+  ymdOf,
 } from "@/lib/schedule";
 import { taskStatusLabel } from "@/lib/tasks";
 import type { CalendarEvent } from "@/types/database";
 
 const input =
   "rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent-deep";
-
-function ymdOf(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** 월 그리드 — 월요일 시작, 앞뒤 빈 칸은 null */
-function buildMonth(y: number, m: number): (string | null)[][] {
-  const startDow = (new Date(y, m, 1).getDay() + 6) % 7;
-  const daysIn = new Date(y, m + 1, 0).getDate();
-  const cells: (string | null)[] = [
-    ...Array<null>(startDow).fill(null),
-    ...Array.from({ length: daysIn }, (_, i) => ymdOf(new Date(y, m, i + 1))),
-  ];
-  while (cells.length % 7 !== 0) cells.push(null);
-  const weeks: (string | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-  return weeks;
-}
 
 /** anchor가 속한 주(월~일)의 날짜들 */
 function weekOf(anchor: Date): string[] {
@@ -43,8 +28,6 @@ function weekOf(anchor: Date): string[] {
     return ymdOf(d);
   });
 }
-
-const DOW = ["월", "화", "수", "목", "금", "토", "일"];
 
 interface CalItem {
   key: string;
@@ -257,7 +240,7 @@ export function ScheduleView({
     setAnchor(d);
   }
 
-  const weeks = buildMonth(anchor.getFullYear(), anchor.getMonth());
+  const weeks = buildMonthGrid(anchor.getFullYear(), anchor.getMonth());
   const weekDays = weekOf(anchor);
   const headLabel =
     view === "month"

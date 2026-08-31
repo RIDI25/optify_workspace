@@ -14,7 +14,6 @@ export interface NavItem {
 /** 메뉴는 실제 업무 흐름 순서: 발굴 → 기획 → 생성 → 검수·발행 → 성과 */
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "대시보드" },
-  { href: "/daily", label: "☕ 데일리 리포트" },
   { href: "/keywords", label: "키워드 리서치", step: 1, section: "콘텐츠 워크플로우" },
   { href: "/plans", label: "콘텐츠 플랜", step: 2 },
   { href: "/generate", label: "콘텐츠 생성", step: 3 },
@@ -26,5 +25,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/revenue", label: "매출", section: "영업", ownerOnly: true },
   { href: "/diagnosis", label: "SEO 진단", section: "영업", ownerOnly: true },
   { href: "/quotes", label: "견적서", section: "영업", ownerOnly: true },
+  { href: "/daily", label: "☕ 데일리 리포트", section: "브리핑" }, // 홈 동선과 분리 — 필요할 때만
   { href: "/settings", label: "설정", section: "관리", ownerOnly: false }, // member는 조회만(페이지 내부에서 제어)
 ];

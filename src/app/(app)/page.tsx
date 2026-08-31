@@ -6,7 +6,9 @@ import { planStatusLabel } from "@/lib/plan-status";
 import { autoDoneKeys } from "@/lib/onboarding";
 import { daysUntilEnd, getService, serviceLabel } from "@/lib/services";
 import { taskStatusLabel } from "@/lib/tasks";
+import { HomeSchedule } from "@/components/dashboard/home-schedule";
 import type {
+  CalendarEvent,
   Client,
   ClientService,
   Content,
@@ -32,6 +34,10 @@ export default async function DashboardPage() {
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  // 캘린더(이번 달)와 이번 주 위젯을 한 쿼리로 커버하는 범위
+  const rangeStart = weekStart < monthStart ? weekStart : monthStart;
+  const rangeEnd = weekEnd > monthEnd ? weekEnd : monthEnd;
 
   // 승인 위젯: owner=대기 전체, member=본인 반려 [Feature 3]
   const pendingCountRes = supabase
@@ -56,8 +62,17 @@ export default async function DashboardPage() {
     .select("client_id, channel, wp_app_password_encrypted");
   const kwRes = supabase.from("keywords").select("client_id");
 
-  const [clientsRes, weekPlansRes, myPlansRes, contentsRes, usageRes, weekTasksRes, profilesRes] =
-    await Promise.all([
+  const [
+    clientsRes,
+    weekPlansRes,
+    myPlansRes,
+    contentsRes,
+    usageRes,
+    calTasksRes,
+    profilesRes,
+    eventsRes,
+    invoicesRes,
+  ] = await Promise.all([
       supabase.from("clients").select("*"),
       supabase
         .from("content_plans")
@@ -82,11 +97,23 @@ export default async function DashboardPage() {
       supabase
         .from("tasks")
         .select("*")
-        .gte("due_date", ymd(weekStart))
-        .lte("due_date", ymd(weekEnd))
-        .neq("status", "done")
+        .gte("due_date", ymd(rangeStart))
+        .lte("due_date", ymd(rangeEnd))
         .order("due_date"),
       supabase.from("profiles").select("id, name"),
+      supabase
+        .from("events")
+        .select("*")
+        .gte("event_date", ymd(monthStart))
+        .lte("event_date", ymd(monthEnd))
+        .order("event_date"),
+      // 세금계산서는 owner 전용 — member는 RLS로 빈 배열
+      supabase
+        .from("tax_invoices")
+        .select("id, issue_date, counterparty")
+        .gte("issue_date", ymd(monthStart))
+        .lte("issue_date", ymd(monthEnd))
+        .neq("status", "cancelled"),
     ]);
 
   const clients = (clientsRes.data ?? []) as Client[];
@@ -100,7 +127,14 @@ export default async function DashboardPage() {
     ApiUsageLog,
     "provider" | "estimated_cost_usd"
   >[];
-  const weekTasks = (weekTasksRes.data ?? []) as Task[];
+  const calTasks = (calTasksRes.data ?? []) as Task[];
+  const weekTasks = calTasks.filter(
+    (t) =>
+      t.due_date != null &&
+      t.due_date >= ymd(weekStart) &&
+      t.due_date <= ymd(weekEnd) &&
+      t.status !== "done",
+  );
   const teamProfiles = (profilesRes.data ?? []) as { id: string; name: string }[];
 
   const clientName = (id: string) =>
@@ -195,6 +229,20 @@ export default async function DashboardPage() {
           {profile.name}님 · {monthLabel}
         </p>
       </div>
+
+      {/* 캘린더 + 오늘 스케줄 (최상단) */}
+      <HomeSchedule
+        events={(eventsRes.data ?? []) as CalendarEvent[]}
+        tasks={calTasks}
+        invoices={
+          (invoicesRes.data ?? []) as {
+            id: string;
+            issue_date: string;
+            counterparty: string;
+          }[]
+        }
+        profiles={teamProfiles}
+      />
 
       {/* 콘텐츠 워크플로우 한눈에 */}
       <section className="rounded-xl border border-border bg-surface p-4">
