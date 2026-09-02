@@ -23,6 +23,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/schedule", label: "스케줄", section: "팀 운영" },
   { href: "/sales", label: "영업·리드", section: "영업" }, // member는 조회만 (RLS 0023)
   { href: "/revenue", label: "매출", section: "영업" }, // member는 조회만 (RLS 0023)
+  { href: "/ledger", label: "장부", section: "영업" }, // 회계 장부 — 팀 공용 기입
   { href: "/diagnosis", label: "SEO 진단", section: "영업", ownerOnly: true },
   { href: "/quotes", label: "견적서", section: "영업", ownerOnly: true },
   { href: "/daily", label: "☕ 데일리 리포트", section: "브리핑" }, // 홈 동선과 분리 — 필요할 때만

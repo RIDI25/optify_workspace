@@ -15,6 +15,14 @@ import {
   taskTypeLabel,
 } from "@/lib/tasks";
 import { EVENT_TYPES, eventTypeLabel } from "@/lib/schedule";
+import {
+  ENTRY_TYPES,
+  LEDGER_CATEGORIES,
+  PAYMENT_METHODS,
+  entryTypeLabel,
+  ledgerCategoryLabel,
+  paymentMethodLabel,
+} from "@/lib/ledger";
 
 export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
@@ -157,6 +165,29 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
         memo: { type: "string", description: "메모" },
       },
       required: ["title", "event_date"],
+    },
+  },
+  {
+    name: "add_ledger_entry",
+    description:
+      "회계 장부에 입금/지출 내역을 기입한다. '점심값 카드로 3만원 썼어 장부에 적어줘', '광고비 50만원 이체했어' 류 요청에 사용. 세금계산서 입금은 이 도구가 아니라 add_invoice_payment로 등록한다 (장부에 자동 표시됨).",
+    input_schema: {
+      type: "object",
+      properties: {
+        entry_date: { type: "string", description: "일자 YYYY-MM-DD (기본: 오늘)" },
+        entry_type: { type: "string", enum: ENTRY_TYPES.map((t) => t.key), description: "입금(income)/지출(expense), 기본 expense" },
+        payment_method: { type: "string", enum: PAYMENT_METHODS.map((p) => p.key), description: "카드(card)/계좌이체(transfer)/현금(cash)/기타, 기본 card" },
+        amount: { type: "integer", description: "금액 (원, 필수)" },
+        counterparty: { type: "string", description: "거래처/사용처 (예: 스타벅스, 네이버클라우드)" },
+        description: { type: "string", description: "적요 — 무슨 돈인지 한 줄" },
+        category: {
+          type: "string",
+          enum: LEDGER_CATEGORIES.map((c) => c.key),
+          description: `분류: ${LEDGER_CATEGORIES.map((c) => `${c.key}=${c.label}`).join(", ")}. 내용에서 유추 (기본 etc)`,
+        },
+        memo: { type: "string", description: "메모" },
+      },
+      required: ["amount"],
     },
   },
   {
@@ -482,6 +513,27 @@ export async function executeAssistantTool(
         return {
           ok: true,
           result: `일정 등록 완료 — ${row.event_date}(${dowOf(row.event_date)})${row.event_time ? ` ${row.event_time}` : ""} "${row.title}" (${eventTypeLabel(row.event_type)})${client.note}. 스케줄 메뉴에서 확인 가능.`,
+        };
+      }
+      case "add_ledger_entry": {
+        const amount = Number(input.amount) || 0;
+        if (amount <= 0) return { ok: false, result: "금액이 필요합니다." };
+        const row = {
+          entry_date: (input.entry_date as string) || kstToday(),
+          entry_type: (input.entry_type as string) || "expense",
+          payment_method: (input.payment_method as string) || "card",
+          amount,
+          counterparty: (input.counterparty as string) || null,
+          description: (input.description as string) || null,
+          category: (input.category as string) || "etc",
+          memo: (input.memo as string) || null,
+          created_by: ctx.userId,
+        };
+        const { error } = await supabase.from("ledger_entries").insert(row);
+        if (error) return { ok: false, result: `장부 기입 실패: ${error.message}` };
+        return {
+          ok: true,
+          result: `장부 기입 완료 — ${row.entry_date} ${entryTypeLabel(row.entry_type)} ${wonFmt(amount)} (${paymentMethodLabel(row.payment_method)}${row.counterparty ? `, ${row.counterparty}` : ""}, ${ledgerCategoryLabel(row.category)}). 장부 메뉴에서 확인 가능.`,
         };
       }
       case "get_revenue_summary": {

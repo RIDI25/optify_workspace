@@ -312,6 +312,21 @@ export interface TaskTemplate extends Timestamps {
   updated_at: string;
 }
 
+/** 회계 장부 — entry_type/payment_method/category는 lib/ledger.ts 레지스트리 키 */
+export interface LedgerEntry extends Timestamps {
+  id: string;
+  entry_date: string;
+  entry_type: string;
+  payment_method: string;
+  amount: number;
+  counterparty: string | null;
+  description: string | null;
+  category: string;
+  memo: string | null;
+  created_by: string | null;
+  updated_at: string;
+}
+
 export interface SeoDiagnosis extends Timestamps {
   id: string;
   url: string;
@@ -372,6 +387,7 @@ export interface Database {
       tasks: TableShape<Task>;
       task_templates: TableShape<TaskTemplate>;
       events: TableShape<CalendarEvent>;
+      ledger_entries: TableShape<LedgerEntry>;
       api_usage_logs: TableShape<ApiUsageLog>;
     };
     Views: Record<string, never>;
