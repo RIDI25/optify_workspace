@@ -21,10 +21,12 @@ export function PaymentsSection({
   invoices,
   payments,
   onChanged,
+  readOnly = false,
 }: {
   invoices: TaxInvoice[];
   payments: InvoicePayment[];
   onChanged: () => void;
+  readOnly?: boolean;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -192,7 +194,7 @@ export function PaymentsSection({
                   </div>
                 </div>
 
-                {remaining > 0 && (
+                {remaining > 0 && !readOnly && (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <input
                       type="number"
@@ -240,12 +242,14 @@ export function PaymentsSection({
                           <span className="font-mono text-ink">{won(Number(p.amount))}</span>
                           {p.memo && <span className="ml-1">· {p.memo}</span>}
                         </span>
-                        <button
-                          onClick={() => removePayment(p, inv)}
-                          className="text-muted hover:text-red-500"
-                        >
-                          삭제
-                        </button>
+                        {!readOnly && (
+                          <button
+                            onClick={() => removePayment(p, inv)}
+                            className="text-muted hover:text-red-500"
+                          >
+                            삭제
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>

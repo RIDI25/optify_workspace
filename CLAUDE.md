@@ -45,7 +45,8 @@ Phase 1 완료(생성 엔진·WP/네이버/스레드·키워드·플랜·라이�
 마감+계산서 발행일 병합, 레지스트리 `lib/schedule.ts`) + 대시보드 '이번 주 업무' 위젯.
 AI 비서(우하단 위젯 → `/api/assistant`, Claude Opus 5 tool-use 루프, 도구는 `lib/assistant/tools.ts` 레지스트리):
 세금계산서·입금·리드 등록 + 업무·일정 등록/조회/상태 변경 + 매출 요약(owner 전용). 실행은 사용자 세션 → RLS 적용.
-DB: `supabase/migrations/0001~0022`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events).
+/sales·/revenue는 member도 조회 가능(0023 — select 팀, 쓰기 owner. 페이지는 readOnly 모드로 편집 UI 숨김).
+DB: `supabase/migrations/0001~0023`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)

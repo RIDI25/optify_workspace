@@ -39,10 +39,12 @@ const EMPTY_FORM = {
 };
 
 export function LeadPipeline({
+  readOnly = false,
   leads,
   quotes,
   onChanged,
 }: {
+  readOnly?: boolean;
   leads: Lead[];
   quotes: Quote[];
   onChanged: () => void;
@@ -133,12 +135,14 @@ export function LeadPipeline({
         </h2>
         <div className="flex items-center gap-2">
           {msg && <span className="text-xs text-muted">{msg}</span>}
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="rounded-md border border-accent-deep px-3 py-1.5 text-sm font-medium text-accent-deep hover:bg-tint"
-          >
-            {showForm ? "닫기" : "+ 리드 추가"}
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => setShowForm((v) => !v)}
+              className="rounded-md border border-accent-deep px-3 py-1.5 text-sm font-medium text-accent-deep hover:bg-tint"
+            >
+              {showForm ? "닫기" : "+ 리드 추가"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -247,30 +251,40 @@ export function LeadPipeline({
                     </td>
                     <td className="py-2 pr-3 align-middle text-muted">{lead.source ?? "-"}</td>
                     <td className="py-2 pr-3 align-middle">
-                      <select
-                        value={lead.status}
-                        onChange={(e) => updateLead(lead.id, { status: e.target.value as LeadStatus })}
-                        className="rounded-md border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-accent-deep"
-                      >
-                        {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
+                      {readOnly ? (
+                        <span className="text-xs text-ink">{STATUS_LABELS[lead.status]}</span>
+                      ) : (
+                        <select
+                          value={lead.status}
+                          onChange={(e) => updateLead(lead.id, { status: e.target.value as LeadStatus })}
+                          className="rounded-md border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-accent-deep"
+                        >
+                          {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                     <td className="py-2 pr-3 align-middle">
-                      <input
-                        type="date"
-                        value={lead.next_followup ?? ""}
-                        onChange={(e) =>
-                          updateLead(lead.id, { next_followup: e.target.value || null })
-                        }
-                        className={[
-                          "rounded-md border bg-surface px-2 py-1 text-xs outline-none focus:border-accent-deep",
-                          due ? "border-red-300 text-red-600" : "border-border",
-                        ].join(" ")}
-                      />
+                      {readOnly ? (
+                        <span className={`font-mono text-xs ${due ? "text-red-600" : "text-muted"}`}>
+                          {lead.next_followup ?? "-"}
+                        </span>
+                      ) : (
+                        <input
+                          type="date"
+                          value={lead.next_followup ?? ""}
+                          onChange={(e) =>
+                            updateLead(lead.id, { next_followup: e.target.value || null })
+                          }
+                          className={[
+                            "rounded-md border bg-surface px-2 py-1 text-xs outline-none focus:border-accent-deep",
+                            due ? "border-red-300 text-red-600" : "border-border",
+                          ].join(" ")}
+                        />
+                      )}
                     </td>
                     <td className="py-2 pr-3 align-middle text-xs">
                       {leadQuotes.length > 0 ? (
@@ -282,6 +296,15 @@ export function LeadPipeline({
                       )}
                     </td>
                     <td className="py-2 align-middle">
+                      {readOnly ? (
+                        lead.client_id ? (
+                          <span className="rounded bg-tint px-2 py-1 text-xs text-accent-deep">
+                            전환됨
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted">-</span>
+                        )
+                      ) : (
                       <div className="flex items-center gap-1.5">
                         <Link
                           href={`/quotes?leadId=${lead.id}`}
@@ -311,6 +334,7 @@ export function LeadPipeline({
                           삭제
                         </button>
                       </div>
+                      )}
                     </td>
                   </tr>
                 );

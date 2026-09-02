@@ -59,7 +59,7 @@ const EMPTY_FORM = {
   quote_id: "",
 };
 
-export function RevenueView() {
+export function RevenueView({ readOnly = false }: { readOnly?: boolean }) {
   const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
   const [payments, setPayments] = useState<InvoicePayment[]>([]);
   const [wonQuotes, setWonQuotes] = useState<Quote[]>([]);
@@ -324,9 +324,10 @@ export function RevenueView() {
       </section>
 
       {/* 입금·미수금 관리 */}
-      <PaymentsSection invoices={invoices} payments={payments} onChanged={reload} />
+      <PaymentsSection invoices={invoices} payments={payments} onChanged={reload} readOnly={readOnly} />
 
-      {/* 발행 입력 */}
+      {/* 발행 입력 (owner 전용) */}
+      {!readOnly && (
       <section className="space-y-3 rounded-lg border border-border bg-surface p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-bold text-ink">세금계산서 발행 입력</h2>
@@ -429,6 +430,7 @@ export function RevenueView() {
           {msg && <span className="text-xs text-red-500">{msg}</span>}
         </div>
       </section>
+      )}
 
       {/* 이력 테이블 */}
       <section className="space-y-3 rounded-lg border border-border bg-surface p-5">
@@ -477,44 +479,62 @@ export function RevenueView() {
                       {Number(inv.total_amount).toLocaleString("ko-KR")}
                     </td>
                     <td className="py-2 pr-3">
-                      <select
-                        value={inv.status}
-                        onChange={(e) => updateStatus(inv, e.target.value as TaxInvoiceStatus)}
-                        className={[
-                          "rounded-md border bg-surface px-2 py-1 text-xs outline-none focus:border-accent-deep",
-                          inv.status === "paid"
-                            ? "border-accent-deep text-accent-deep"
-                            : inv.status === "issued"
-                              ? "border-amber-300 text-amber-700"
-                              : "border-border text-muted",
-                        ].join(" ")}
-                      >
-                        {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
+                      {readOnly ? (
+                        <span
+                          className={`text-xs font-medium ${
+                            inv.status === "paid"
+                              ? "text-accent-deep"
+                              : inv.status === "issued"
+                                ? "text-amber-700"
+                                : "text-muted"
+                          }`}
+                        >
+                          {STATUS_LABELS[inv.status]}
+                        </span>
+                      ) : (
+                        <select
+                          value={inv.status}
+                          onChange={(e) => updateStatus(inv, e.target.value as TaxInvoiceStatus)}
+                          className={[
+                            "rounded-md border bg-surface px-2 py-1 text-xs outline-none focus:border-accent-deep",
+                            inv.status === "paid"
+                              ? "border-accent-deep text-accent-deep"
+                              : inv.status === "issued"
+                                ? "border-amber-300 text-amber-700"
+                                : "border-border text-muted",
+                          ].join(" ")}
+                        >
+                          {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                     <td className="py-2 pr-3">
-                      {inv.status === "paid" ? (
+                      {inv.status !== "paid" ? (
+                        <span className="text-xs text-muted">-</span>
+                      ) : readOnly ? (
+                        <span className="font-mono text-xs text-muted">{inv.paid_at ?? "-"}</span>
+                      ) : (
                         <input
                           type="date"
                           value={inv.paid_at ?? ""}
                           onChange={(e) => updatePaidAt(inv, e.target.value)}
                           className="rounded-md border border-border bg-surface px-2 py-1 text-xs outline-none focus:border-accent-deep"
                         />
-                      ) : (
-                        <span className="text-xs text-muted">-</span>
                       )}
                     </td>
                     <td className="py-2 text-right">
-                      <button
-                        onClick={() => remove(inv)}
-                        className="rounded border border-border px-2 py-1 text-xs text-muted hover:text-red-500"
-                      >
-                        삭제
-                      </button>
+                      {!readOnly && (
+                        <button
+                          onClick={() => remove(inv)}
+                          className="rounded border border-border px-2 py-1 text-xs text-muted hover:text-red-500"
+                        >
+                          삭제
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

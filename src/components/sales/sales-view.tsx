@@ -29,7 +29,7 @@ function localMonth(offset = 0): string {
 /** 수주 월 기준: won_at 우선, 없으면 견적일 */
 const wonMonth = (q: Quote) => ((q.won_at ?? q.quote_date) || "").slice(0, 7);
 
-export function SalesView() {
+export function SalesView({ readOnly = false }: { readOnly?: boolean }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [target, setTarget] = useState(DEFAULT_TARGET);
@@ -127,7 +127,11 @@ export function SalesView() {
             <div className="h-1.5 overflow-hidden rounded-full bg-subtle">
               <div className="h-full rounded-full bg-accent" style={{ width: `${progress}%` }} />
             </div>
-            {editingTarget ? (
+            {readOnly ? (
+              <p className="mt-1 text-xs text-muted">
+                목표 {won(target)} · 달성 {progress}%
+              </p>
+            ) : editingTarget ? (
               <span className="mt-1 flex items-center gap-1">
                 <input
                   value={targetInput}
@@ -217,7 +221,7 @@ export function SalesView() {
       {loading ? (
         <p className="py-6 text-center text-sm text-muted">불러오는 중…</p>
       ) : (
-        <LeadPipeline leads={leads} quotes={quotes} onChanged={reload} />
+        <LeadPipeline leads={leads} quotes={quotes} onChanged={reload} readOnly={readOnly} />
       )}
     </div>
   );

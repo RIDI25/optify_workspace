@@ -7,7 +7,7 @@ export default async function SchedulePage() {
   const profile = await requireProfile();
   const supabase = await createClient();
 
-  // 세금계산서는 owner 전용 — member는 RLS로 빈 배열이 반환돼 캘린더에서 자연히 빠진다.
+  // 세금계산서 발행일 — 조회는 팀 전체 (쓰기는 owner 전용, RLS 0023)
   const [eventsRes, tasksRes, invoicesRes, clientsRes, profilesRes] =
     await Promise.all([
       supabase.from("events").select("*").order("event_date"),

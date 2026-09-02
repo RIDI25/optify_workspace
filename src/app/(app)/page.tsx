@@ -107,7 +107,7 @@ export default async function DashboardPage() {
         .gte("event_date", ymd(monthStart))
         .lte("event_date", ymd(monthEnd))
         .order("event_date"),
-      // 세금계산서는 owner 전용 — member는 RLS로 빈 배열
+      // 세금계산서 발행일 — 조회는 팀 전체 (쓰기는 owner 전용, RLS 0023)
       supabase
         .from("tax_invoices")
         .select("id, issue_date, counterparty")

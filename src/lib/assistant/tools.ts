@@ -162,7 +162,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_revenue_summary",
     description:
-      "월별 매출 요약을 조회한다 — 해당 월 세금계산서 발행 합계, 입금 합계, 현재 전체 미수금. owner 전용 (member 요청 시 권한 안내).",
+      "월별 매출 요약을 조회한다 — 해당 월 세금계산서 발행 합계, 입금 합계, 현재 전체 미수금.",
     input_schema: {
       type: "object",
       properties: {
@@ -485,11 +485,7 @@ export async function executeAssistantTool(
         };
       }
       case "get_revenue_summary": {
-        // owner 전용 — RLS로도 차단되지만, member에게는 명확한 권한 안내를 준다
-        const { data: prof } = await supabase.from("profiles").select("role").eq("id", ctx.userId).single();
-        if (prof?.role !== "owner") {
-          return { ok: false, result: "매출 요약은 owner 전용입니다." };
-        }
+        // 매출 조회는 팀 전체 허용 (0023 — 쓰기는 계속 owner 전용)
         const month = (input.month as string) || kstToday().slice(0, 7);
         const start = `${month}-01`;
         const [y, m] = month.split("-").map(Number);
