@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
 import { monthBoundsUtc, monthContentSummary, type PublishRow } from "@/lib/publish-stats";
+import { buildReportModel } from "@/lib/export/report-model";
 import { useClientContext } from "@/components/providers/client-context";
 import { channelLabel } from "@/lib/channels";
 import { saveReport } from "@/lib/actions/reports";
@@ -401,6 +402,33 @@ export function ReportsView() {
         </div>
       </div>
 
+      {/* 자료 준비 상태 — 부족한 것부터 (2차) */}
+      <section className="rounded-lg border border-border bg-surface p-4">
+        <h2 className="mb-2 text-sm font-semibold text-ink">자료 준비 상태</h2>
+        <ul className="grid grid-cols-1 gap-1.5 text-sm md:grid-cols-2">
+          {[
+            { ok: !!gsc, label: gsc ? "구글 서치콘솔 자료 있음" : "구글 서치콘솔 자료 없음 → 아래 '구글 자료 불러오기'" },
+            { ok: !!ga4, label: ga4 ? "GA4 자료 있음" : "GA4 자료 없음 → 아래 '구글 자료 불러오기'" },
+            { ok: (naver.blog_total_views ?? 0) > 0 || (naver.blog_visitor_count ?? 0) > 0, label: (naver.blog_total_views ?? 0) > 0 || (naver.blog_visitor_count ?? 0) > 0 ? "네이버 블로그 지표 입력됨" : "네이버 블로그 지표 입력 필요" },
+            { ok: contentSummary.published > 0, label: `발행 완료 ${contentSummary.published}건${contentSummary.external ? ` (외부 작성 ${contentSummary.external} 포함)` : ""}${contentSummary.wpDrafts ? ` · WP 초안만 ${contentSummary.wpDrafts}건은 제외` : ""}` },
+            { ok: !!googleReport.trim() && !!naverReport.trim() && !!summary.trim(), label: [!googleReport.trim() && "구글 소견", !naverReport.trim() && "네이버 소견", !summary.trim() && "종합"].filter(Boolean).length ? `미작성: ${[!googleReport.trim() && "구글 소견", !naverReport.trim() && "네이버 소견", !summary.trim() && "종합"].filter(Boolean).join(" · ")}` : "소견 세 편 모두 작성됨" },
+            { ok: false, label: "트래커 SEO·GEO 결과는 아직 리포트에 넣지 않습니다 (연결 예정)", neutral: true },
+          ].map((it, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <span
+                className={[
+                  "mt-0.5 shrink-0 rounded-full px-1.5 py-px text-[10px] font-semibold",
+                  it.neutral ? "bg-subtle text-muted" : it.ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800",
+                ].join(" ")}
+              >
+                {it.neutral ? "미연결" : it.ok ? "있음" : "필요"}
+              </span>
+              <span className={it.ok || it.neutral ? "text-ink" : "text-amber-900"}>{it.label}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       {/* 진행 단계 */}
       <div className="flex flex-wrap items-center gap-1.5">
         {steps.map((s, i) => (
@@ -693,19 +721,43 @@ export function ReportsView() {
         />
       </Section>
 
-      {/* 저장 / 내보내기 */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* 문서 미리보기 — 내보내는 PDF·docx 와 같은 모델 */}
+      <Section title="문서 미리보기">
+        <p className="mb-2 text-xs text-muted">아래 내용이 그대로 PDF·docx 로 나갑니다. 수치는 위 자료와 같은 계산입니다.</p>
+        <div className="space-y-3 rounded-md border border-border bg-subtle/60 p-4 text-sm">
+          {buildReportModel(selectedClient?.name ?? "", ym, {
+            content_summary: contentSummary,
+            gsc: gsc as Parameters<typeof buildReportModel>[2]["gsc"],
+            ga4: ga4 as Parameters<typeof buildReportModel>[2]["ga4"],
+            naver_manual_metrics: naver as Parameters<typeof buildReportModel>[2]["naver_manual_metrics"],
+            next_month_plans: nextPlans,
+            ai_summary: summary,
+          }).sections.map((sec) => (
+            <div key={sec.heading}>
+              <p className="font-semibold text-ink">{sec.heading}</p>
+              <ul className="mt-0.5 space-y-0.5 text-muted">
+                {sec.lines.map((line, i) => (
+                  <li key={i} className="whitespace-pre-wrap">{line}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* 저장 / 내보내기 — 화면 아래 고정 */}
+      <div className="sticky bottom-0 z-10 -mx-2 flex flex-wrap items-center gap-2 border-t border-border bg-surface/95 px-2 py-3 backdrop-blur">
         <button
           onClick={() => save()}
           className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-ink hover:opacity-90"
         >
-          저장(초안)
+          임시 저장
         </button>
         <button
           onClick={() => save("final")}
           className="rounded-md bg-accent-deep px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
         >
-          확정 저장
+          확정
         </button>
         {saveMsg && <span className="text-xs text-muted">{saveMsg}</span>}
         <ReportExport

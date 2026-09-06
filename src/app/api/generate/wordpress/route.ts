@@ -57,6 +57,8 @@ export async function POST(req: NextRequest) {
     .select("is_internal, name")
     .eq("id", clientId)
     .single();
+  // 고객사 콘텐츠 기준 (0028 미적용이면 null)
+  const { data: brief } = await supabase.from("client_briefs").select("*").eq("client_id", clientId).maybeSingle();
 
   // 글 길이 기준 이미지 3~4장 (롱폼 기본 4장)
   const imageCount = 4;
@@ -69,6 +71,7 @@ export async function POST(req: NextRequest) {
     imageCount,
     isInternalClient: clientRow?.is_internal ?? false,
     clientName: clientRow?.name ?? null,
+    brief: brief ?? null,
   });
 
   try {

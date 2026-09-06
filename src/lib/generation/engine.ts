@@ -1,4 +1,4 @@
-import { brandRulesBlock, writerPersonaLine } from "@/lib/generation/brand-rules";
+import { brandRulesBlock, briefBlock, writerPersonaLine, type BriefLike } from "@/lib/generation/brand-rules";
 import { businessContextBlock } from "@/lib/generation/business-context";
 import { KOREAN_STYLE_BLOCK, channelDivergenceBlock } from "@/lib/generation/korean-style";
 import { HARVARD_5_BLOCK, usesHarvardStructure } from "@/lib/generation/writing-structure";
@@ -19,6 +19,8 @@ export interface GenerateInput {
   clientName?: string | null;
   /** 외부 고객사 채널 설정의 블로그 카테고리 (channel_settings.category) */
   blogCategory?: string | null;
+  /** 고객사 콘텐츠 기준 (client_briefs, 0028) */
+  brief?: BriefLike | null;
 }
 
 /** preset의 키를 한글 라벨로 매핑 (표시/프롬프트용) */
@@ -82,6 +84,8 @@ export function buildSystemPrompt(input: GenerateInput): string {
   if (input.isInternalClient) parts.push(businessContextBlock());
 
   parts.push(writerPersonaLine(brand));
+  const bb = briefBlock(input.brief);
+  if (bb) parts.push(bb);
   parts.push(`[채널]\n  ${input.channel}`);
   parts.push(renderPreset(input.preset));
 
@@ -164,12 +168,14 @@ export function buildWordpressJsonPrompt(input: {
   imageCount: number;
   isInternalClient?: boolean;
   clientName?: string | null;
+  brief?: BriefLike | null;
 }): { system: string; user: string } {
   const brand = { internal: !!input.isInternalClient, clientName: input.clientName };
   const system = [
     brandRulesBlock(brand),
     input.isInternalClient ? businessContextBlock() : "",
     writerPersonaLine(brand, "워드프레스 SEO 블로그 작가"),
+    briefBlock(input.brief),
     renderPreset(input.preset),
     HARVARD_5_BLOCK,
     KOREAN_STYLE_BLOCK,

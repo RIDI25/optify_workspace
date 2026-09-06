@@ -51,3 +51,24 @@ export function writerPersonaLine(opts: BrandRulesOptions, role = "콘텐츠 작
   const who = opts.clientName?.trim() ? `'${opts.clientName.trim()}'` : "고객사";
   return `당신은 ${who}의 ${role}입니다 (옵티파이가 대행 작성). 글의 화자와 브랜드는 ${who}이며, 아래 채널 프리셋을 철저히 준수해 글을 작성하세요.`;
 }
+
+export interface BriefLike {
+  tone?: string | null;
+  audience?: string | null;
+  must_include?: string | null;
+  banned?: string | null;
+  notes?: string | null;
+}
+
+/** 고객사 콘텐츠 기준(client_briefs) 블록. 채운 칸만 넣는다. 비어 있으면 빈 문자열. */
+export function briefBlock(brief: BriefLike | null | undefined): string {
+  if (!brief) return "";
+  const lines: string[] = [];
+  if (brief.tone?.trim()) lines.push(`- 말투: ${brief.tone.trim()}`);
+  if (brief.audience?.trim()) lines.push(`- 독자: ${brief.audience.trim()}`);
+  if (brief.must_include?.trim()) lines.push(`- 꼭 넣을 것: ${brief.must_include.trim()}`);
+  if (brief.banned?.trim()) lines.push(`- 쓰지 말 것(금지 표현): ${brief.banned.trim()}`);
+  if (brief.notes?.trim()) lines.push(`- 참고: ${brief.notes.trim()}`);
+  if (lines.length === 0) return "";
+  return ["[고객사 콘텐츠 기준 — 채널 프리셋보다 우선]", ...lines].join("\n");
+}

@@ -37,7 +37,9 @@ export function ClientServicesSection({
 }) {
   const [services, setServices] = useState<ClientService[]>([]);
   const [adding, setAdding] = useState(false);
-  const [type, setType] = useState(SERVICES[0].key);
+  const [type, setType] = useState(SERVICES[0].key); // 항목명 — 추천 목록에 없어도 자유 입력
+  const [billing, setBilling] = useState<"one_time" | "period">(SERVICES[0].billing);
+  const [quota, setQuota] = useState("");
   const [startDate, setStartDate] = useState(today());
   // 종료일은 유형·시작일 기준으로 렌더 중 파생한다 (기간제면 시작일 + 기본 개월, 아니면 빈값).
   // 손으로 고친 값은 그 유형·시작일 조합에서만 유지되고, 유형이나 시작일이 바뀌면 다시 자동 계산된다
@@ -54,8 +56,8 @@ export function ClientServicesSection({
   const endDate =
     endDateOverride && endDateOverride.key === endDateKey
       ? endDateOverride.value
-      : def?.billing === "period"
-        ? addMonths(startDate, def.defaultMonths ?? 6)
+      : billing === "period"
+        ? addMonths(startDate, def?.defaultMonths ?? 6)
         : "";
   const setEndDate = (value: string) => setEndDateOverride({ key: endDateKey, value });
 
@@ -71,20 +73,26 @@ export function ClientServicesSection({
   useEffect(reload, [reload]);
 
   async function add() {
-    if (!def) return;
+    const name = type.trim();
+    if (!name) {
+      setMsg("계약 항목명을 적으세요.");
+      return;
+    }
     setBusy(true);
     setMsg("");
-    const { error } = await createClient().from("client_services").insert({
+    const row: Record<string, unknown> = {
       client_id: clientId,
-      service_type: type,
-      billing: def.billing,
+      service_type: name,
+      billing,
       status: "active",
       start_date: startDate || null,
-      end_date: def.billing === "period" ? endDate || null : null,
-      amount: def.billing === "one_time" && amount ? Number(amount) : null,
-      monthly_fee: def.billing === "period" && monthlyFee ? Number(monthlyFee) : null,
+      end_date: billing === "period" ? endDate || null : null,
+      amount: billing === "one_time" && amount ? Number(amount) : null,
+      monthly_fee: billing === "period" && monthlyFee ? Number(monthlyFee) : null,
       memo: memo || null,
-    });
+    };
+    if (billing === "period" && quota) row.monthly_quota = Number(quota); // 0028 컬럼 — 적었을 때만 보낸다
+    const { error } = await createClient().from("client_services").insert(row);
     setBusy(false);
     if (error) {
       setMsg(`추가 실패: ${error.message}`);
@@ -93,6 +101,7 @@ export function ClientServicesSection({
     setAdding(false);
     setAmount("");
     setMonthlyFee("");
+    setQuota("");
     setMemo("");
     reload();
   }
@@ -163,30 +172,53 @@ export function ClientServicesSection({
 
       {adding && (
         <div className="space-y-3 rounded-md bg-subtle p-3">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
             <label className="space-y-1">
-              <span className="text-xs font-medium text-muted">서비스</span>
-              <select value={type} onChange={(e) => setType(e.target.value)} className={`w-full ${input}`}>
+              <span className="text-xs font-medium text-muted">계약 항목 (자유 입력 · 추천 목록은 참고)</span>
+              <input
+                list="service-suggestions"
+                value={type}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setType(v);
+                  const known = getService(v);
+                  if (known) setBilling(known.billing);
+                }}
+                placeholder="예: SEO 컨설팅"
+                className={`w-full ${input}`}
+              />
+              <datalist id="service-suggestions">
                 {SERVICES.map((s) => (
                   <option key={s.key} value={s.key}>
                     {s.emoji} {s.label} ({s.billing === "period" ? "기간제" : "일회성"})
                   </option>
                 ))}
+              </datalist>
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-muted">청구 방식</span>
+              <select value={billing} onChange={(e) => setBilling(e.target.value as "one_time" | "period")} className={`w-full ${input}`}>
+                <option value="period">기간제 (월)</option>
+                <option value="one_time">일회성</option>
               </select>
             </label>
             <label className="space-y-1">
               <span className="text-xs font-medium text-muted">시작일</span>
               <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`w-full ${input}`} />
             </label>
-            {def?.billing === "period" ? (
+            {billing === "period" ? (
               <>
                 <label className="space-y-1">
-                  <span className="text-xs font-medium text-muted">종료일 (기본 {def.defaultMonths ?? 6}개월)</span>
+                  <span className="text-xs font-medium text-muted">종료일 (기본 {def?.defaultMonths ?? 6}개월)</span>
                   <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`w-full ${input}`} />
                 </label>
                 <label className="space-y-1">
                   <span className="text-xs font-medium text-muted">월 비용 (원, 선택)</span>
                   <input type="number" min={0} value={monthlyFee} onChange={(e) => setMonthlyFee(e.target.value)} className={`w-full text-right ${input}`} />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs font-medium text-muted">월 약정 수량 (건, 선택)</span>
+                  <input type="number" min={0} value={quota} onChange={(e) => setQuota(e.target.value)} placeholder="예: 4" className={`w-full text-right ${input}`} />
                 </label>
               </>
             ) : (
@@ -249,6 +281,7 @@ export function ClientServicesSection({
                           </b>
                         )}
                         {svc.monthly_fee ? ` · 월 ${won(Number(svc.monthly_fee))}` : ""}
+                        {svc.monthly_quota ? ` · 월 ${svc.monthly_quota}건 약정` : ""}
                       </>
                     ) : (
                       <>

@@ -96,6 +96,7 @@ export function ClientOverview({ id }: { id: string }) {
   const rejected = loaded.contents.filter((c) => c.approval_status === "rejected");
   const overdueTasks = loaded.tasks.filter((t) => t.due_date && t.due_date < today);
   const soonPlans = loaded.plans.filter((p) => p.scheduled_date && p.scheduled_date <= addDays(today, 7));
+  const quota = loaded.services.filter((s) => s.status === "active").reduce((sum, s) => sum + (s.monthly_quota ?? 0), 0);
   const latestWeek = loaded.metrics[0]?.week;
   const latestMetrics = latestWeek ? loaded.metrics.filter((m) => m.week === latestWeek && m.value != null) : [];
 
@@ -170,7 +171,7 @@ export function ClientOverview({ id }: { id: string }) {
         <Section title={`이번 달 콘텐츠 (${ym})`} right={<Link href={clientPath(id, "content")} className="text-xs text-accent-deep hover:underline">콘텐츠 →</Link>}>
           <Bars published={summary.published} pending={pending.length + rejected.length} planned={loaded.plans.filter((p) => p.scheduled_date?.startsWith(ym)).length} />
           <p className="mt-1.5 text-xs text-muted">
-            발행 완료 {summary.published} · 검수·수정 {pending.length + rejected.length} · 예정{" "}
+            {quota > 0 ? `약정 ${quota}건 중 발행 완료 ${summary.published}` : `발행 완료 ${summary.published}`} · 검수·수정 {pending.length + rejected.length} · 예정{" "}
             {loaded.plans.filter((p) => p.scheduled_date?.startsWith(ym)).length} · 이번 달 생성 {summary.total}
             {summary.wpDrafts ? ` · WP 초안만 ${summary.wpDrafts}` : ""}
           </p>

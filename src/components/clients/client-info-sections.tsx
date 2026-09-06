@@ -45,6 +45,18 @@ export function ClientCard({
   const [status, setStatus] = useState(client.status);
   const [memo, setMemo] = useState(client.memo ?? "");
   const [msg, setMsg] = useState("");
+  // 0028 회사 정보 — 컬럼이 있는 DB 에서만 저장한다 (없으면 칸도 숨김)
+  const hasCompanyCols = "industry" in client;
+  const [company, setCompany] = useState({
+    industry: client.industry ?? "",
+    region: client.region ?? "",
+    website_url: client.website_url ?? "",
+    blog_url: client.blog_url ?? "",
+    place_url: client.place_url ?? "",
+    contact_name: client.contact_name ?? "",
+    contact_phone: client.contact_phone ?? "",
+  });
+  const setCo = (k: keyof typeof company) => (v: string) => setCompany((c) => ({ ...c, [k]: v }));
 
   async function save() {
     const r = await saveClient(client.id, {
@@ -53,6 +65,9 @@ export function ClientCard({
       ga4_property_id: ga4 || null,
       status,
       memo: memo || null,
+      ...(hasCompanyCols
+        ? Object.fromEntries(Object.entries(company).map(([k, v]) => [k, v.trim() || null]))
+        : {}),
     });
     setMsg(r.ok ? "저장됨" : `실패: ${r.error}`);
     setTimeout(() => setMsg(""), 2000);
@@ -74,6 +89,21 @@ export function ClientCard({
           </span>
         )}
       </div>
+      {hasCompanyCols ? (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Field label="업종 (자유 입력)" value={company.industry} onChange={setCo("industry")} disabled={readOnly} />
+          <Field label="지역" value={company.region} onChange={setCo("region")} disabled={readOnly} />
+          <Field label="홈페이지" value={company.website_url} onChange={setCo("website_url")} disabled={readOnly} />
+          <Field label="네이버 블로그" value={company.blog_url} onChange={setCo("blog_url")} disabled={readOnly} />
+          <Field label="네이버 플레이스" value={company.place_url} onChange={setCo("place_url")} disabled={readOnly} />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="고객 담당자" value={company.contact_name} onChange={setCo("contact_name")} disabled={readOnly} />
+            <Field label="연락처" value={company.contact_phone} onChange={setCo("contact_phone")} disabled={readOnly} />
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-muted">업종·지역·홈페이지·블로그·플레이스 칸은 0028_client_brief.sql 을 실행하면 나타납니다.</p>
+      )}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Field label="GSC 사이트 URL (sc-domain:… 또는 https://…)" value={gsc} onChange={setGsc} disabled={readOnly} />
         <Field label="GA4 속성 ID (숫자)" value={ga4} onChange={setGa4} disabled={readOnly} />

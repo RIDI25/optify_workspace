@@ -37,6 +37,28 @@ export interface Client extends Timestamps {
   ga4_property_id: string | null;
   memo: string | null;
   created_by: string | null;
+  /** 0025: 트래커 폴더 이름 */
+  tracker_slug?: string | null;
+  /** 0028: 회사 정보 (모두 선택) */
+  industry?: string | null;
+  region?: string | null;
+  website_url?: string | null;
+  blog_url?: string | null;
+  place_url?: string | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
+}
+
+/** 0028: 고객사 콘텐츠 기준 — 생성 엔진이 시스템 프롬프트에 넣는다 */
+export interface ClientBrief {
+  client_id: string;
+  tone: string | null;
+  audience: string | null;
+  must_include: string | null;
+  banned: string | null;
+  notes: string | null;
+  updated_by: string | null;
+  updated_at: string;
 }
 
 export interface ChannelSettings extends Timestamps {
@@ -246,6 +268,8 @@ export interface ClientService extends Timestamps {
   service_type: string;
   billing: "one_time" | "period";
   status: ServiceStatus;
+  /** 0028: 월 약정 수량 (콘텐츠 계약) */
+  monthly_quota?: number | null;
   start_date: string | null;
   end_date: string | null;
   amount: number | null;

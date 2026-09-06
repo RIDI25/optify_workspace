@@ -10,6 +10,14 @@ interface ClientPatch {
   ga4_property_id?: string | null;
   status?: "active" | "paused" | "ended";
   memo?: string | null;
+  // 0028 회사 정보
+  industry?: string | null;
+  region?: string | null;
+  website_url?: string | null;
+  blog_url?: string | null;
+  place_url?: string | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
 }
 
 /** 클라이언트 저장(신규 insert 또는 update). owner만 — RLS로 강제. */

@@ -484,6 +484,13 @@ export function RevenueView({ readOnly = false }: { readOnly?: boolean }) {
                       {Number(inv.total_amount).toLocaleString("ko-KR")}
                     </td>
                     <td className="py-2 pr-3">
+                      {inv.status !== "cancelled" && (() => {
+                        const p = paidByInvoice.get(inv.id) ?? 0;
+                        const t = Number(inv.total_amount);
+                        const cls = p >= t ? "bg-emerald-50 text-emerald-700" : p > 0 ? "bg-amber-50 text-amber-800" : "bg-subtle text-muted";
+                        const label = p >= t ? "완납" : p > 0 ? `부분 입금 ${won(p)}` : "미입금";
+                        return <span className={`mb-1 block w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${cls}`}>{label}</span>;
+                      })()}
                       {readOnly ? (
                         <span
                           className={`text-xs font-medium ${

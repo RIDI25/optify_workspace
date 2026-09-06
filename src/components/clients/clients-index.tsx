@@ -174,6 +174,7 @@ function ClientCardTile({ client, data, ym, today }: { client: Client; data: Loa
   const nextDue = dueDates.find((d) => d >= today) ?? null;
   const report = (data?.reports ?? []).find((r) => r.client_id === client.id) ?? null;
   const endingSoon = services.find((s) => s.end_date && s.end_date >= today && s.end_date <= addDays(today, 30));
+  const quota = services.reduce((sum, s) => sum + (s.monthly_quota ?? 0), 0);
 
   const total = Math.max(1, summary.published + pending + planned);
   const pct = (n: number) => `${Math.round((n / total) * 100)}%`;
@@ -208,7 +209,7 @@ function ClientCardTile({ client, data, ym, today }: { client: Client; data: Loa
         <span style={{ width: pct(planned) }} className="bg-border" title="예정" />
       </div>
       <p className="mt-1.5 text-xs text-muted">
-        발행 {summary.published} · 검수·수정 {pending} · 예정 {planned}
+        {quota > 0 ? `약정 ${quota}건 중 발행 ${summary.published}` : `발행 ${summary.published}`} · 검수·수정 {pending} · 예정 {planned}
         {summary.wpDrafts ? ` · WP 초안만 ${summary.wpDrafts}` : ""}
       </p>
       <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">

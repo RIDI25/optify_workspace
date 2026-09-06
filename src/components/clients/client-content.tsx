@@ -6,10 +6,13 @@ import { PlansView } from "@/components/plans/plans-view";
 import { GenerateView } from "@/components/generate/generate-view";
 import { LibraryView } from "@/components/library/library-view";
 import { KeywordsView } from "@/components/keywords/keywords-view";
+import { ContentWorkList } from "@/components/clients/content-work-list";
+import { parseClientPath } from "@/lib/nav";
 
-type View = "plans" | "generate" | "library" | "keywords";
+type View = "work" | "plans" | "generate" | "library" | "keywords";
 const VIEWS: { key: View; label: string; hint: string }[] = [
-  { key: "plans", label: "작업 (플랜)", hint: "기획 → 예정일 → 상태" },
+  { key: "work", label: "작업 목록", hint: "다섯 상태 · 다음 행동" },
+  { key: "plans", label: "플랜 · 일정", hint: "기획 → 예정일 → 외부 글 등록" },
   { key: "generate", label: "글 만들기", hint: "AI 생성 → 수정 → 완료 처리" },
   { key: "library", label: "라이브러리 · 검수", hint: "승인 · 발행 기록" },
   { key: "keywords", label: "키워드 리서치", hint: "도구 — 주제 발굴" },
@@ -17,13 +20,14 @@ const VIEWS: { key: View; label: string; hint: string }[] = [
 
 /**
  * 고객사 카드 › 콘텐츠. 기존 네 화면(플랜·생성·라이브러리·키워드)을 한 탭 안의 보기로 잇는다.
- * (1차) 다섯 상태의 한 작업 목록은 2차에서 이 자리에 들어온다.
+ * (2차) '작업 목록'이 기본 — 다섯 상태와 다음 행동. 나머지는 도구 보기.
  */
 export function ClientContent() {
   const params = useSearchParams();
   const pathname = usePathname();
   const raw = params.get("view");
-  const view: View = VIEWS.some((v) => v.key === raw) ? (raw as View) : "plans";
+  const view: View = VIEWS.some((v) => v.key === raw) ? (raw as View) : "work";
+  const clientId = parseClientPath(pathname)?.clientId ?? "";
 
   const hrefFor = (key: View) => {
     const q = new URLSearchParams(params.toString());
@@ -51,6 +55,7 @@ export function ClientContent() {
           </Link>
         ))}
       </div>
+      {view === "work" && clientId && <ContentWorkList clientId={clientId} />}
       {view === "plans" && <PlansView />}
       {view === "generate" && <GenerateView />}
       {view === "library" && <LibraryView />}

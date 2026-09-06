@@ -71,6 +71,8 @@ export async function POST(req: NextRequest) {
     .select("is_internal, name")
     .eq("id", body.clientId)
     .single();
+  // 고객사 콘텐츠 기준 (0028 미적용이면 null)
+  const { data: brief } = await supabase.from("client_briefs").select("*").eq("client_id", body.clientId).maybeSingle();
 
   // 프리셋 미등록 클라이언트도 기본 설정으로 생성 (프리셋 편집 UI 제거됨)
   const preset = (settings?.preset ?? {}) as Record<string, unknown>;
@@ -84,6 +86,7 @@ export async function POST(req: NextRequest) {
     naverCategory: body.naverCategory ?? null,
     clientName: clientRow?.name ?? null,
     blogCategory: (settings as { category?: string | null } | null)?.category ?? null,
+    brief: brief ?? null,
   });
   const userPrompt = buildUserPrompt({
     channel: body.channel,
