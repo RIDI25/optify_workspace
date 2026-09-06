@@ -35,7 +35,7 @@ PDF 문서(`lib/export/*-pdf.tsx`)·카드뉴스·브랜드 설명(`lib/generati
 
 ## 현재 상태
 Phase 1 완료(생성 엔진·WP/네이버/스레드·키워드·플랜·라이브러리·대시보드), Phase 2 진행 중(리포트).
-영업 축 완료(owner 전용): /quotes 견적서(품목 카탈로그 `lib/quote-items.ts`, 공급자·계좌·지급조건 `lib/quote-config.ts`,
+영업 축 완료(owner 전용): /quotes 견적서(품목은 손으로 입력 — 카탈로그 선택 UI 2026-09-06 제거, `lib/quote-items.ts`는 진단 프리필·단위용; 공급자·계좌·지급조건 `lib/quote-config.ts`,
 계약 조항 `lib/contract-terms.ts`, 계약서·청구서는 견적 내역의 문서 생성 드롭다운) + /sales 리드 파이프라인·매출
 대시보드(수주 리드 → 클라이언트 전환 시 온보딩 태스크 자동 발급) + /diagnosis SEO 진단(`lib/seo-audit/` —
 라이브 체크 + 스크리밍프로그 Internal CSV 교차 검증, AI 소견, PDF 리포트, 실패 항목 → 견적 초안 자동 생성).

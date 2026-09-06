@@ -107,13 +107,13 @@ export async function buildQuoteDocx(model: QuoteDocModel): Promise<Buffer> {
     ],
   });
 
-  // 카테고리 구분행 포함 품목 행 구성 (수기 품목 = category null → '기타')
+  // 카테고리 구분행 포함 품목 행 구성 (직접 입력 품목 = category null → 구분행 없음)
   const itemRows: TableRow[] = [];
   let lastCat: string | null | undefined = undefined;
   let no = 0;
   for (const item of model.items as QuoteLineItem[]) {
-    const cat = item.category ?? "기타";
-    if (cat !== lastCat) {
+    const cat = item.category; // 직접 입력한 품목(null)은 구분행 없이 나열
+    if (cat && cat !== lastCat) {
       itemRows.push(
         new TableRow({
           children: [cell(cat, { bold: true, color: DEEP, fill: SUBTLE, columnSpan: 7 })],

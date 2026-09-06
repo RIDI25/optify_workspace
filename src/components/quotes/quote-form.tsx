@@ -1,14 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  CATALOG_BASE_PRICES,
-  CATALOG_ITEM_INDEX,
-  QUOTE_CATALOG,
-  QUOTE_UNITS,
-  formatManwon,
-  type QuoteCatalogItem,
-} from "@/lib/quote-items";
+import { CATALOG_ITEM_INDEX, QUOTE_UNITS } from "@/lib/quote-items";
 import { QUOTE_VALID_DAYS } from "@/lib/quote-config";
 import {
   calcQuoteTotals,
@@ -20,16 +13,15 @@ import { createClient } from "@/lib/supabase/client";
 import { DEAL_CHANNELS } from "@/lib/deal-channels";
 import type { DealChannel, Lead, Quote } from "@/types/database";
 
+/** 견적 품목 한 줄. 품목은 전부 손으로 입력한다 (2026-09-06 카탈로그 선택 UI 제거). category 는 옛 견적 호환용으로만 남긴다. */
 interface DraftItem {
   key: number;
-  category: string | null; // 카탈로그 카테고리, 수기 추가는 null
+  category: string | null;
   name: string;
   detail: string;
   qty: number;
   unit: string;
   unit_price: number;
-  /** 카탈로그 기준단가 — 표시·되돌리기용 (스냅샷에는 저장 안 함) */
-  base_price: number | null;
 }
 
 function localDate(offsetDays = 0): string {
@@ -69,7 +61,8 @@ export function QuoteForm({
   const [endClientName, setEndClientName] = useState("");
   const [quoteDate, setQuoteDate] = useState(localDate());
   const [validUntil, setValidUntil] = useState(localDate(QUOTE_VALID_DAYS));
-  const [items, setItems] = useState<DraftItem[]>([]);
+  const blankItem = (): DraftItem => ({ key: nextKey(), category: null, name: "", detail: "", qty: 1, unit: "식", unit_price: 0 });
+  const [items, setItems] = useState<DraftItem[]>(() => [blankItem()]);
   const [vatMode, setVatMode] = useState<VatMode>("excluded");
   const [notes, setNotes] = useState("");
   const [savedQuoteId, setSavedQuoteId] = useState<string | null>(null);
@@ -99,13 +92,12 @@ export function QuoteForm({
         .filter((e): e is NonNullable<typeof e> => !!e)
         .map((e) => ({
           key: nextKey(),
-          category: e.category,
+          category: null,
           name: e.item.name,
           detail: e.item.detail,
           qty: 1,
           unit: e.item.unit,
           unit_price: e.item.basePrice,
-          base_price: e.item.basePrice,
         }));
       if (drafts.length) setItems(drafts);
       if (data.lead_id) {
@@ -171,9 +163,13 @@ export function QuoteForm({
     setValidUntil(localDate(QUOTE_VALID_DAYS));
     setItems(
       seed.items.map((it) => ({
-        ...it,
         key: nextKey(),
-        base_price: CATALOG_BASE_PRICES.get(it.name) ?? null,
+        category: it.category ?? null,
+        name: it.name,
+        detail: it.detail,
+        qty: it.qty,
+        unit: it.unit,
+        unit_price: it.unit_price,
       })),
     );
     setVatMode(seed.vat_mode);
@@ -188,27 +184,8 @@ export function QuoteForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedNonce]);
 
-  function addCatalogItem(category: string, item: QuoteCatalogItem) {
-    setItems((prev) => [
-      ...prev,
-      {
-        key: nextKey(),
-        category,
-        name: item.name,
-        detail: item.detail,
-        qty: 1,
-        unit: item.unit,
-        unit_price: item.basePrice, // 기준단가 자동 입력 (수동 수정 가능)
-        base_price: item.basePrice,
-      },
-    ]);
-  }
-
-  function addCustomItem() {
-    setItems((prev) => [
-      ...prev,
-      { key: nextKey(), category: null, name: "", detail: "", qty: 1, unit: "식", unit_price: 0, base_price: null },
-    ]);
+  function addItem() {
+    setItems((prev) => [...prev, blankItem()]);
   }
 
   function updateItem(key: number, patch: Partial<DraftItem>) {
@@ -226,7 +203,7 @@ export function QuoteForm({
     setCustomerEmail("");
     setQuoteDate(localDate());
     setValidUntil(localDate(QUOTE_VALID_DAYS));
-    setItems([]);
+    setItems([blankItem()]);
     setVatMode("excluded");
     setNotes("");
     setSavedQuoteId(null);
@@ -422,51 +399,30 @@ export function QuoteForm({
         </label>
       </div>
 
-      {/* 품목 카탈로그 */}
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-ink">품목 선택 (클릭하면 추가)</p>
-        <div className="grid gap-2 md:grid-cols-2">
-          {QUOTE_CATALOG.map((cat) => (
-            <div key={cat.category} className="rounded-md border border-border p-2.5">
-              <p className="mb-1.5 text-xs font-bold text-accent-deep">{cat.category}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {cat.items.map((item) => (
-                  <button
-                    key={item.name}
-                    onClick={() => addCatalogItem(cat.category, item)}
-                    title={`${item.detail} · 기준 ${formatManwon(item.basePrice)}원`}
-                    className="rounded border border-border px-2 py-1 text-xs text-ink hover:border-accent-deep hover:bg-tint"
-                  >
-                    + {item.name} <span className="text-muted">{formatManwon(item.basePrice)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* 선택된 품목 테이블 */}
+      {/* 견적 품목 — 전부 직접 입력 */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-ink">견적 품목 ({items.length})</p>
+          <div>
+            <p className="text-sm font-medium text-ink">견적 품목 ({items.filter((it) => it.name.trim()).length})</p>
+            <p className="text-xs text-muted">품목명·내역·수량·단가를 직접 적습니다. 금액은 자동 계산됩니다.</p>
+          </div>
           <button
-            onClick={addCustomItem}
+            onClick={addItem}
             className="rounded-md border border-accent-deep px-3 py-1.5 text-sm font-medium text-accent-deep hover:bg-tint"
           >
-            + 품목 직접 추가
+            + 품목 추가
           </button>
         </div>
         {items.length === 0 ? (
           <p className="rounded-md border border-dashed border-border py-6 text-center text-sm text-muted">
-            위 카탈로그에서 품목을 선택하거나 직접 추가하세요.
+            {"'+ 품목 추가'를 눌러 첫 품목을 적으세요."}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted">
-                  <th className="w-24 py-2 pr-2 font-medium">구분</th>
+                  <th className="w-8 py-2 pr-2 font-medium">#</th>
                   <th className="py-2 pr-2 font-medium">품목</th>
                   <th className="py-2 pr-2 font-medium">내역</th>
                   <th className="w-16 py-2 pr-2 font-medium">수량</th>
@@ -477,18 +433,14 @@ export function QuoteForm({
                 </tr>
               </thead>
               <tbody>
-                {items.map((it) => (
+                {items.map((it, idx) => (
                   <tr key={it.key} className="border-b border-border">
-                    <td className="py-1.5 pr-2 align-middle">
-                      <span className="whitespace-nowrap text-[10px] text-muted">
-                        {it.category ?? "직접 입력"}
-                      </span>
-                    </td>
+                    <td className="py-1.5 pr-2 align-middle text-xs text-muted">{idx + 1}</td>
                     <td className="py-1.5 pr-2 align-middle">
                       <input
                         value={it.name}
                         onChange={(e) => updateItem(it.key, { name: e.target.value })}
-                        placeholder="품목명"
+                        placeholder="예: 홈페이지 제작"
                         className={`w-full min-w-36 ${input}`}
                       />
                     </td>
@@ -496,7 +448,7 @@ export function QuoteForm({
                       <input
                         value={it.detail}
                         onChange={(e) => updateItem(it.key, { detail: e.target.value })}
-                        placeholder="내역"
+                        placeholder="예: 메인 1 + 서브 4페이지, 반응형"
                         className={`w-full min-w-44 ${input}`}
                       />
                     </td>
@@ -533,20 +485,6 @@ export function QuoteForm({
                         }
                         className={`w-full text-right ${input}`}
                       />
-                      {it.base_price != null && (
-                        <button
-                          onClick={() => updateItem(it.key, { unit_price: it.base_price! })}
-                          title="기준단가로 되돌리기"
-                          className={[
-                            "mt-0.5 block w-full text-right text-[10px]",
-                            it.unit_price === it.base_price
-                              ? "text-muted/60"
-                              : "text-muted hover:text-accent-deep",
-                          ].join(" ")}
-                        >
-                          기준 {formatManwon(it.base_price)}
-                        </button>
-                      )}
                     </td>
                     <td className="py-1.5 pr-2 text-right align-middle font-mono text-ink">
                       {Math.round(it.qty * it.unit_price).toLocaleString("ko-KR")}
