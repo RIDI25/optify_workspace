@@ -1,549 +1,252 @@
-import Link from "next/link";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { channelLabel } from "@/lib/channels";
-import { planStatusLabel } from "@/lib/plan-status";
-import { autoDoneKeys } from "@/lib/onboarding";
-import { daysUntilEnd, getService, serviceLabel } from "@/lib/services";
-import { taskStatusLabel } from "@/lib/tasks";
-import { isPublished } from "@/lib/publish-stats";
-import { HomeSchedule } from "@/components/dashboard/home-schedule";
+import { serviceLabel } from "@/lib/services";
+import { kstMonth, monthBoundsUtc, monthContentSummary, type PublishRow } from "@/lib/publish-stats";
 import { TrackerSummary } from "@/components/dashboard/tracker-summary";
-import type {
-  CalendarEvent,
-  Client,
-  ClientService,
-  Content,
-  ContentPlan,
-  ApiUsageLog,
-  Task,
-} from "@/types/database";
+import { TodayView, type TodayClientSummary, type TodayEvent, type TodayRow } from "@/components/today/today-view";
 
-function ymd(d: Date): string {
+function kstToday(): string {
+  return new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+}
+function addDays(ymd: string, n: number): string {
+  const d = new Date(`${ymd}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
-
-export default async function DashboardPage() {
-  const profile = await requireProfile();
-  const supabase = await createClient();
-
-  const now = new Date();
-  // 이번 주 (월~일)
-  const day = now.getDay(); // 0=일
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() + mondayOffset);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  // 캘린더(이번 달)와 이번 주 위젯을 한 쿼리로 커버하는 범위
-  const rangeStart = weekStart < monthStart ? weekStart : monthStart;
-  const rangeEnd = weekEnd > monthEnd ? weekEnd : monthEnd;
-
-  // 승인 위젯: owner=대기 전체, member=본인 반려 [Feature 3]
-  const pendingCountRes = supabase
-    .from("contents")
-    .select("id", { count: "exact", head: true })
-    .eq("approval_status", "pending");
-  const myRejectedRes = supabase
-    .from("contents")
-    .select("id", { count: "exact", head: true })
-    .eq("approval_status", "rejected")
-    .eq("created_by", profile.id);
-
-  const onboardingRes = supabase
-    .from("client_onboarding_tasks")
-    .select("client_id, task_key, done");
-  const servicesRes = supabase
-    .from("client_services")
-    .select("*")
-    .in("status", ["active", "paused"]);
-  const csRes = supabase
-    .from("channel_settings")
-    .select("client_id, channel, wp_app_password_encrypted");
-  const kwRes = supabase.from("keywords").select("client_id");
-
-  const [
-    clientsRes,
-    weekPlansRes,
-    myPlansRes,
-    contentsRes,
-    usageRes,
-    calTasksRes,
-    profilesRes,
-    eventsRes,
-    invoicesRes,
-  ] = await Promise.all([
-      supabase.from("clients").select("*"),
-      supabase
-        .from("content_plans")
-        .select("*")
-        .gte("scheduled_date", ymd(weekStart))
-        .lte("scheduled_date", ymd(weekEnd))
-        .order("scheduled_date"),
-      supabase
-        .from("content_plans")
-        .select("*")
-        .eq("assignee", profile.id)
-        .neq("status", "published")
-        .order("scheduled_date", { nullsFirst: false }),
-      supabase
-        .from("contents")
-        .select("client_id, wp_post_id, published_at, created_at")
-        .gte("created_at", monthStart.toISOString()),
-      supabase
-        .from("api_usage_logs")
-        .select("provider, estimated_cost_usd, input_tokens, output_tokens, created_at")
-        .gte("created_at", monthStart.toISOString()),
-      supabase
-        .from("tasks")
-        .select("*")
-        .gte("due_date", ymd(rangeStart))
-        .lte("due_date", ymd(rangeEnd))
-        .order("due_date"),
-      supabase.from("profiles").select("id, name"),
-      supabase
-        .from("events")
-        .select("*")
-        .gte("event_date", ymd(monthStart))
-        .lte("event_date", ymd(monthEnd))
-        .order("event_date"),
-      // 세금계산서 발행일 — 조회는 팀 전체 (쓰기는 owner 전용, RLS 0023)
-      supabase
-        .from("tax_invoices")
-        .select("id, issue_date, counterparty")
-        .gte("issue_date", ymd(monthStart))
-        .lte("issue_date", ymd(monthEnd))
-        .neq("status", "cancelled"),
-    ]);
-
-  const clients = (clientsRes.data ?? []) as Client[];
-  const weekPlans = (weekPlansRes.data ?? []) as ContentPlan[];
-  const myPlans = (myPlansRes.data ?? []) as ContentPlan[];
-  const contents = (contentsRes.data ?? []) as Pick<
-    Content,
-    "client_id" | "wp_post_id" | "published_at" | "created_at"
-  >[];
-  const usage = (usageRes.data ?? []) as Pick<
-    ApiUsageLog,
-    "provider" | "estimated_cost_usd"
-  >[];
-  const calTasks = (calTasksRes.data ?? []) as Task[];
-  const weekTasks = calTasks.filter(
-    (t) =>
-      t.due_date != null &&
-      t.due_date >= ymd(weekStart) &&
-      t.due_date <= ymd(weekEnd) &&
-      t.status !== "done",
-  );
-  const teamProfiles = (profilesRes.data ?? []) as { id: string; name: string }[];
-
-  const clientName = (id: string) =>
-    clients.find((c) => c.id === id)?.name ?? "-";
-
-  // 클라이언트별 이번 달 생성/발행
-  const perClient = clients.map((c) => {
-    const rows = contents.filter((x) => x.client_id === c.id);
-    return {
-      id: c.id,
-      name: c.name,
-      generated: rows.length,
-      published: rows.filter(isPublished).length, // 발행 완료 표시된 글만 (WP 초안 제외) — lib/publish-stats
-    };
-  });
-
-  const totalCost = usage.reduce(
-    (sum, u) => sum + (Number(u.estimated_cost_usd) || 0),
-    0,
-  );
-
-  const pendingCount = profile.role === "owner" ? (await pendingCountRes).count ?? 0 : 0;
-  const myRejectedCount =
-    profile.role === "member" ? (await myRejectedRes).count ?? 0 : 0;
-
-  // 팔로업 예정 리드 (owner 전용 — RLS로도 owner만 조회됨)
-  const followupCount =
-    profile.role === "owner"
-      ? (
-          await supabase
-            .from("leads")
-            .select("id", { count: "exact", head: true })
-            .lte("next_followup", ymd(now))
-            .in("status", ["inquiry", "consulting", "quoted"])
-        ).count ?? 0
-      : 0;
-
-  // 온보딩 진행중 클라이언트 (is_internal 제외) [A-2]
-  const [onboarding, cs, kws, svcRes] = await Promise.all([
-    onboardingRes,
-    csRes,
-    kwRes,
-    servicesRes,
-  ]);
-  const allServices = (svcRes.data ?? []) as ClientService[];
-  // 기간제 계약 만료 임박 (30일 이내, 진행중)
-  const expiring = allServices.filter((s) => {
-    if (s.status !== "active" || s.billing !== "period") return false;
-    const days = daysUntilEnd(s.end_date);
-    return days != null && days <= 30;
-  });
-  const tasksAll = (onboarding.data ?? []) as {
-    client_id: string;
-    task_key: string;
-    done: boolean;
-  }[];
-  const csAll = (cs.data ?? []) as {
-    client_id: string;
-    channel: string;
-    wp_app_password_encrypted: string | null;
-  }[];
-  const kwAll = (kws.data ?? []) as { client_id: string }[];
-  const onboardingClients = clients
-    .filter((c) => !c.is_internal)
-    .map((c) => {
-      const auto = autoDoneKeys({
-        hasGscGa4Ids: !!(c.gsc_site_url && c.ga4_property_id),
-        hasWpCreds: csAll.some(
-          (x) =>
-            x.client_id === c.id &&
-            x.channel === "wordpress" &&
-            x.wp_app_password_encrypted,
-        ),
-        hasPresets: csAll.some((x) => x.client_id === c.id),
-        hasKeywords: kwAll.some((x) => x.client_id === c.id),
-      });
-      const clientTasks = tasksAll.filter((t) => t.client_id === c.id);
-      const remaining = clientTasks.filter(
-        (t) => !t.done && !auto.has(t.task_key),
-      ).length;
-      return { id: c.id, name: c.name, total: clientTasks.length, remaining };
-    })
-    .filter((x) => x.total > 0 && x.remaining > 0);
-
-  const monthLabel = `${now.getFullYear()}년 ${now.getMonth() + 1}월`;
-
-  return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-ink">대시보드</h1>
-        <p className="mt-1 text-sm text-muted">
-          {profile.name}님 · {monthLabel}
-        </p>
-      </div>
-
-      {/* 캘린더 + 오늘 스케줄 (최상단) */}
-      <HomeSchedule
-        events={(eventsRes.data ?? []) as CalendarEvent[]}
-        tasks={calTasks}
-        invoices={
-          (invoicesRes.data ?? []) as {
-            id: string;
-            issue_date: string;
-            counterparty: string;
-          }[]
-        }
-        profiles={teamProfiles}
-      />
-
-      {/* 트래커: 모든 고객사의 AI 노출·검색 순위 최근 실행 (0025) */}
-      <TrackerSummary />
-
-      {/* 콘텐츠 워크플로우 한눈에 */}
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="mb-3 text-sm font-semibold text-ink">
-          콘텐츠 워크플로우
-        </h2>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {[
-            { step: 1, href: "/keywords", label: "키워드 발굴", desc: "리포트 분석 → ☆ 보관" },
-            { step: 2, href: "/plans", label: "플랜 기획", desc: "주제 뽑기 → 일정 배정" },
-            { step: 3, href: "/generate", label: "콘텐츠 생성", desc: "프리셋 기반 AI 생성" },
-            { step: 4, href: "/library", label: "검수·발행", desc: "승인 → WP·채널 발행" },
-            { step: 5, href: "/reports", label: "성과 확인", desc: "월간 리포트 · GSC" },
-          ].map((s, i) => (
-            <div key={s.step} className="flex items-center gap-1.5">
-              {i > 0 && <span className="text-muted">→</span>}
-              <Link
-                href={s.href}
-                className="group rounded-lg border border-border px-3 py-2 transition-colors hover:border-accent-deep hover:bg-tint/40"
-              >
-                <p className="text-xs font-semibold text-ink group-hover:text-accent-deep">
-                  <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded bg-subtle font-mono text-[10px] text-muted group-hover:bg-accent-deep group-hover:text-white">
-                    {s.step}
-                  </span>
-                  {s.label}
-                </p>
-                <p className="mt-0.5 text-[11px] text-muted">{s.desc}</p>
-              </Link>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* 승인 위젯 [Feature 3] */}
-      {profile.role === "owner" && pendingCount > 0 && (
-        <Link
-          href="/library?approval=pending"
-          className="block rounded-lg border border-accent-deep/30 bg-tint/40 p-4 hover:bg-tint"
-        >
-          <p className="text-sm font-semibold text-accent-deep">
-            승인 대기 콘텐츠 {pendingCount}건
-          </p>
-          <p className="mt-0.5 text-xs text-muted">
-            클릭하면 라이브러리에서 대기 목록을 확인합니다.
-          </p>
-        </Link>
-      )}
-      {profile.role === "member" && myRejectedCount > 0 && (
-        <Link
-          href="/library?approval=rejected"
-          className="block rounded-lg border border-red-200 bg-red-50 p-4 hover:bg-red-100"
-        >
-          <p className="text-sm font-semibold text-red-600">
-            반려된 콘텐츠 {myRejectedCount}건
-          </p>
-          <p className="mt-0.5 text-xs text-muted">
-            코멘트를 확인하고 수정 후 다시 요청하세요.
-          </p>
-        </Link>
-      )}
-
-      {/* 팔로업 예정 리드 (owner) */}
-      {profile.role === "owner" && followupCount > 0 && (
-        <Link
-          href="/sales"
-          className="block rounded-lg border border-amber-300 bg-amber-50 p-4 hover:bg-amber-100"
-        >
-          <p className="text-sm font-semibold text-amber-700">
-            팔로업 예정 리드 {followupCount}건
-          </p>
-          <p className="mt-0.5 text-xs text-muted">
-            영업·리드에서 오늘까지 팔로업할 리드를 확인하세요.
-          </p>
-        </Link>
-      )}
-
-      {/* 계약 만료 임박 (owner) — 재계약 영업 타이밍 */}
-      {profile.role === "owner" && expiring.length > 0 && (
-        <Link
-          href="/settings"
-          className="block rounded-lg border border-amber-300 bg-amber-50 p-4 hover:bg-amber-100"
-        >
-          <p className="text-sm font-semibold text-amber-700">
-            계약 만료 임박 {expiring.length}건 (30일 이내)
-          </p>
-          <p className="mt-0.5 text-xs text-muted">
-            {expiring
-              .slice(0, 3)
-              .map((s) => {
-                const days = daysUntilEnd(s.end_date);
-                return `${clientName(s.client_id)} · ${serviceLabel(s.service_type)} ${days != null && days >= 0 ? `D-${days}` : "만료"}`;
-              })
-              .join("  |  ")}
-            {expiring.length > 3 ? ` 외 ${expiring.length - 3}건` : ""} — 재계약을 논의하세요.
-          </p>
-        </Link>
-      )}
-
-      {/* 온보딩 진행중 클라이언트 [A-2] */}
-      {onboardingClients.length > 0 && (
-        <section className="rounded-lg border border-border bg-surface p-4">
-          <h2 className="mb-3 text-sm font-semibold text-ink">
-            온보딩 진행중 클라이언트
-          </h2>
-          <ul className="space-y-2">
-            {onboardingClients.map((c) => (
-              <li key={c.id} className="flex items-center justify-between text-sm">
-                <Link
-                  href="/settings"
-                  className="text-ink hover:text-accent-deep hover:underline"
-                >
-                  {c.name}
-                </Link>
-                <span className="text-xs text-muted">
-                  미완료 {c.remaining} / {c.total}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* member: 내 담당을 최상단으로 */}
-      {profile.role === "member" && (
-        <MyPlansCard plans={myPlans} clientName={clientName} />
-      )}
-
-      {/* 이번 주 업무 (담당자별) */}
-      <section className="rounded-lg border border-border bg-surface p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-ink">이번 주 업무</h2>
-          <Link href="/tasks" className="text-xs text-accent-deep hover:underline">
-            업무 보드 →
-          </Link>
-        </div>
-        {weekTasks.length === 0 ? (
-          <p className="text-sm text-muted">이번 주 마감 업무가 없습니다.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {[...teamProfiles, { id: "__none", name: "담당 미지정" }].map((p) => {
-              const mine = weekTasks.filter((t) =>
-                p.id === "__none" ? !t.assignee_id : t.assignee_id === p.id,
-              );
-              if (mine.length === 0) return null;
-              return (
-                <div key={p.id} className="rounded-md border border-border p-3">
-                  <p className="mb-2 text-xs font-semibold text-muted">
-                    {p.name} · {mine.length}건
-                  </p>
-                  <ul className="space-y-1.5">
-                    {mine.slice(0, 5).map((t) => (
-                      <li
-                        key={t.id}
-                        className="flex items-center justify-between text-sm"
-                      >
-                        <span className="truncate text-ink">{t.title}</span>
-                        <span className="ml-2 shrink-0 font-mono text-xs text-muted">
-                          {t.due_date?.slice(5).replace("-", "/")} ·{" "}
-                          {taskStatusLabel(t.status)}
-                        </span>
-                      </li>
-                    ))}
-                    {mine.length > 5 && (
-                      <li className="text-xs text-muted">외 {mine.length - 5}건</li>
-                    )}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        {/* 이번 주 발행 예정 */}
-        <section className="rounded-lg border border-border bg-surface p-4">
-          <h2 className="mb-3 text-sm font-semibold text-ink">
-            이번 주 발행 예정
-          </h2>
-          {weekPlans.length === 0 ? (
-            <p className="text-sm text-muted">예정된 플랜이 없습니다.</p>
-          ) : (
-            <ul className="space-y-2">
-              {weekPlans.map((p) => (
-                <li key={p.id} className="flex items-center justify-between text-sm">
-                  <span className="truncate text-ink">{p.title}</span>
-                  <span className="ml-3 shrink-0 font-mono text-xs text-muted">
-                    {p.scheduled_date} · {channelLabel(p.channel)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {/* 이번 달 API 사용량 */}
-        <section className="rounded-lg border border-border bg-surface p-4">
-          <h2 className="mb-3 text-sm font-semibold text-ink">
-            이번 달 API 사용량
-          </h2>
-          <p className="text-2xl font-bold text-accent-deep">
-            ${totalCost.toFixed(2)}
-          </p>
-          <p className="mt-1 text-sm text-muted">
-            호출 {usage.length}건 (Anthropic / Gemini / Google Ads 합산 추정)
-          </p>
-        </section>
-      </div>
-
-      {/* owner: 내 담당을 하단에 */}
-      {profile.role === "owner" && (
-        <MyPlansCard plans={myPlans} clientName={clientName} />
-      )}
-
-      {/* 클라이언트별 이번 달 */}
-      <section className="rounded-lg border border-border bg-surface p-4">
-        <h2 className="mb-3 text-sm font-semibold text-ink">
-          클라이언트별 이번 달 생성 / 발행
-        </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {perClient.map((c) => {
-            const clientSvcs = allServices.filter(
-              (s) => s.client_id === c.id && s.status === "active",
-            );
-            return (
-              <div key={c.id} className="rounded-md border border-border p-3">
-                <p className="text-sm font-medium text-ink">{c.name}</p>
-                <p className="mt-1 text-sm text-muted">
-                  생성 <span className="font-mono text-ink">{c.generated}</span> ·
-                  발행 <span className="font-mono text-ink">{c.published}</span>
-                </p>
-                {clientSvcs.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {clientSvcs.map((s) => {
-                      const days = s.billing === "period" ? daysUntilEnd(s.end_date) : null;
-                      return (
-                        <span
-                          key={s.id}
-                          className={[
-                            "rounded px-1.5 py-0.5 text-[10px] font-medium",
-                            days != null && days <= 30
-                              ? "bg-amber-50 text-amber-700"
-                              : "bg-tint text-accent-deep",
-                          ].join(" ")}
-                        >
-                          {getService(s.service_type)?.emoji} {serviceLabel(s.service_type)}
-                          {days != null && ` D-${Math.max(0, days)}`}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {perClient.length === 0 && (
-            <p className="text-sm text-muted">클라이언트가 없습니다.</p>
-          )}
-        </div>
-      </section>
-    </div>
-  );
+function fmt(ymd: string): string {
+  return ymd.slice(5).replace("-", "/");
+}
+function dueLabel(due: string | null, today: string): { label: string; overdue: boolean } {
+  if (!due) return { label: "—", overdue: false };
+  if (due < today) {
+    const days = Math.round((new Date(`${today}T00:00:00Z`).getTime() - new Date(`${due}T00:00:00Z`).getTime()) / 86_400_000);
+    return { label: `${fmt(due)} (${days}일 지연)`, overdue: true };
+  }
+  if (due === today) return { label: "오늘", overdue: false };
+  return { label: fmt(due), overdue: false };
 }
 
-function MyPlansCard({
-  plans,
-  clientName,
-}: {
-  plans: ContentPlan[];
-  clientName: (id: string) => string;
-}) {
+/**
+ * 오늘 — "지금 무엇을 처리해야 하나". 검수·발행·업무·영업·정산·계약을 한 표로 모으고 행마다 다음 행동을 붙인다.
+ * (2026-09-06 개편 1차. 2인 모두 같은 권한이라 역할별 화면 구분 없음, '내 담당만' 필터만 둔다)
+ */
+export default async function TodayPage() {
+  const profile = await requireProfile();
+  const supabase = await createClient();
+  const today = kstToday();
+  const ym = kstMonth(new Date().toISOString())!;
+  const { startIso, endIso } = monthBoundsUtc(ym);
+  const weekEnd = addDays(today, 7);
+  const contractHorizon = addDays(today, 30);
+
+  const [clientsRes, profilesRes, reviewRes, tasksRes, leadsRes, plansRes, invoicesRes, paymentsRes, servicesRes, eventsRes, monthContentsRes, upcomingPlansRes] =
+    await Promise.all([
+      supabase.from("clients").select("id, name, is_internal, status").order("is_internal", { ascending: false }).order("created_at"),
+      supabase.from("profiles").select("id, name"),
+      supabase
+        .from("contents")
+        .select("id, client_id, title, channel, approval_status, created_by, created_at")
+        .in("approval_status", ["pending", "rejected"])
+        .order("created_at", { ascending: false }),
+      supabase.from("tasks").select("id, title, client_id, assignee_id, due_date, status").neq("status", "done").lte("due_date", today).order("due_date"),
+      supabase
+        .from("leads")
+        .select("id, company_name, next_followup, created_by, status")
+        .in("status", ["inquiry", "consulting", "quoted"])
+        .lte("next_followup", today)
+        .order("next_followup"),
+      supabase
+        .from("content_plans")
+        .select("id, client_id, title, channel, scheduled_date, assignee, status")
+        .neq("status", "published")
+        .lte("scheduled_date", today)
+        .order("scheduled_date"),
+      supabase.from("tax_invoices").select("id, counterparty, end_client_name, total_amount, issue_date").eq("status", "issued").order("issue_date"),
+      supabase.from("invoice_payments").select("invoice_id, amount"),
+      supabase.from("client_services").select("id, client_id, service_type, end_date").eq("status", "active").gte("end_date", today).lte("end_date", contractHorizon),
+      supabase.from("events").select("id, title, event_date, event_time, event_type, client_id").gte("event_date", today).lte("event_date", weekEnd).order("event_date").order("event_time"),
+      supabase
+        .from("contents")
+        .select("client_id, channel, wp_post_id, published_at, created_at, approval_status")
+        .or(`and(created_at.gte.${startIso},created_at.lte.${endIso}),and(published_at.gte.${startIso},published_at.lte.${endIso})`),
+      supabase
+        .from("content_plans")
+        .select("id, client_id, title, channel, scheduled_date")
+        .neq("status", "published")
+        .gt("scheduled_date", today)
+        .lte("scheduled_date", weekEnd)
+        .order("scheduled_date"),
+    ]);
+
+  type ClientLite = { id: string; name: string; is_internal: boolean; status: string };
+  const clients = (clientsRes.data ?? []) as ClientLite[];
+  const profiles = (profilesRes.data ?? []) as { id: string; name: string }[];
+  const clientName = (id: string | null) => clients.find((c) => c.id === id)?.name ?? "—";
+  const personName = (id: string | null) => profiles.find((p) => p.id === id)?.name ?? "";
+
+  const rows: TodayRow[] = [];
+
+  for (const c of (reviewRes.data ?? []) as { id: string; client_id: string; title: string | null; channel: string; approval_status: string; created_by: string | null }[]) {
+    const rejected = c.approval_status === "rejected";
+    rows.push({
+      key: `review-${c.id}`,
+      group: "review",
+      clientId: c.client_id,
+      clientName: clientName(c.client_id),
+      title: `${c.title || "(제목 없음)"} · ${channelLabel(c.channel)}`,
+      badge: rejected ? "수정 필요" : "검수 필요",
+      tone: rejected ? "bad" : "warn",
+      action: { label: rejected ? "수정하기" : "검수하기", href: `/clients/${c.client_id}/content?view=library&contentId=${c.id}` },
+      due: null,
+      dueLabel: "—",
+      assigneeId: c.created_by,
+      assignee: personName(c.created_by),
+    });
+  }
+
+  for (const p of (plansRes.data ?? []) as { id: string; client_id: string; title: string; channel: string; scheduled_date: string | null; assignee: string | null }[]) {
+    const d = dueLabel(p.scheduled_date, today);
+    rows.push({
+      key: `publish-${p.id}`,
+      group: "publish",
+      clientId: p.client_id,
+      clientName: clientName(p.client_id),
+      title: `${p.title} · ${channelLabel(p.channel)} 발행 예정`,
+      badge: d.overdue ? "지연" : "오늘 발행",
+      tone: d.overdue ? "bad" : "info",
+      action: { label: "발행 기록", href: `/clients/${p.client_id}/content?view=plans` },
+      due: p.scheduled_date,
+      dueLabel: d.label,
+      assigneeId: p.assignee,
+      assignee: personName(p.assignee),
+    });
+  }
+
+  for (const t of (tasksRes.data ?? []) as { id: string; title: string; client_id: string | null; assignee_id: string | null; due_date: string | null }[]) {
+    const d = dueLabel(t.due_date, today);
+    rows.push({
+      key: `task-${t.id}`,
+      group: "task",
+      clientId: t.client_id,
+      clientName: t.client_id ? clientName(t.client_id) : "옵티파이 내부",
+      title: t.title,
+      badge: d.overdue ? "지연" : "오늘 마감",
+      tone: d.overdue ? "bad" : "info",
+      action: { label: "업무 보기", href: "/tasks" },
+      due: t.due_date,
+      dueLabel: d.label,
+      assigneeId: t.assignee_id,
+      assignee: personName(t.assignee_id),
+    });
+  }
+
+  for (const l of (leadsRes.data ?? []) as { id: string; company_name: string; next_followup: string | null; created_by: string | null; status: string }[]) {
+    const d = dueLabel(l.next_followup, today);
+    rows.push({
+      key: `lead-${l.id}`,
+      group: "lead",
+      clientId: null,
+      clientName: l.company_name,
+      title: `후속 연락 · ${l.status === "quoted" ? "견적 보냄" : l.status === "consulting" ? "상담 중" : "문의"}`,
+      badge: d.overdue ? "지연" : "오늘 연락",
+      tone: d.overdue ? "bad" : "info",
+      action: { label: "연락 기록", href: "/sales" },
+      due: l.next_followup,
+      dueLabel: d.label,
+      assigneeId: l.created_by,
+      assignee: personName(l.created_by),
+    });
+  }
+
+  const paid = new Map<string, number>();
+  for (const p of (paymentsRes.data ?? []) as { invoice_id: string; amount: number }[]) {
+    paid.set(p.invoice_id, (paid.get(p.invoice_id) ?? 0) + Number(p.amount));
+  }
+  for (const inv of (invoicesRes.data ?? []) as { id: string; counterparty: string; end_client_name: string | null; total_amount: number; issue_date: string }[]) {
+    const remaining = Number(inv.total_amount) - (paid.get(inv.id) ?? 0);
+    if (remaining <= 0) continue;
+    rows.push({
+      key: `invoice-${inv.id}`,
+      group: "invoice",
+      clientId: null,
+      clientName: inv.end_client_name ?? inv.counterparty,
+      title: `미수금 ${remaining.toLocaleString("ko-KR")}원 (${fmt(inv.issue_date)} 발행)`,
+      badge: "약정일 없음",
+      tone: "muted",
+      action: { label: "입금 기록", href: "/revenue" },
+      due: null,
+      dueLabel: "약정일 없음",
+      assigneeId: null,
+      assignee: "",
+    });
+  }
+
+  for (const s of (servicesRes.data ?? []) as { id: string; client_id: string; service_type: string; end_date: string | null }[]) {
+    const d = dueLabel(s.end_date, today);
+    rows.push({
+      key: `contract-${s.id}`,
+      group: "contract",
+      clientId: s.client_id,
+      clientName: clientName(s.client_id),
+      title: `${serviceLabel(s.service_type)} 계약 종료 예정`,
+      badge: "재계약 논의",
+      tone: "warn",
+      action: { label: "계약 보기", href: `/clients/${s.client_id}/info` },
+      due: s.end_date,
+      dueLabel: d.label,
+      assigneeId: null,
+      assignee: "",
+    });
+  }
+
+  const toneRank: Record<string, number> = { bad: 0, warn: 1, info: 2, muted: 3 };
+  rows.sort((a, b) => toneRank[a.tone] - toneRank[b.tone] || (a.due ?? "9999").localeCompare(b.due ?? "9999"));
+
+  const events: TodayEvent[] = [
+    ...((eventsRes.data ?? []) as { id: string; title: string; event_date: string; event_time: string | null; event_type: string; client_id: string | null }[]).map((e) => ({
+      key: `e-${e.id}`,
+      date: e.event_date,
+      time: e.event_time,
+      title: e.client_id ? `${clientName(e.client_id)} · ${e.title}` : e.title,
+      kind: e.event_type === "meeting" ? "미팅" : e.event_type === "deadline" ? "마감" : e.event_type === "publish" ? "발행" : "일정",
+    })),
+    ...((upcomingPlansRes.data ?? []) as { id: string; client_id: string; title: string; channel: string; scheduled_date: string }[]).map((p) => ({
+      key: `p-${p.id}`,
+      date: p.scheduled_date,
+      time: null,
+      title: `${clientName(p.client_id)} · ${p.title}`,
+      kind: `${channelLabel(p.channel)} 발행`,
+    })),
+  ]
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""))
+    .slice(0, 8);
+
+  const monthContents = (monthContentsRes.data ?? []) as (PublishRow & { client_id: string; approval_status: string })[];
+  const overdueByClient = new Map<string, number>();
+  for (const r of rows) if (r.tone === "bad" && r.clientId) overdueByClient.set(r.clientId, (overdueByClient.get(r.clientId) ?? 0) + 1);
+  const clientSummaries: TodayClientSummary[] = clients
+    .filter((c) => c.status === "active")
+    .map((c) => {
+      const mine = monthContents.filter((x) => x.client_id === c.id);
+      const s = monthContentSummary(mine, ym);
+      return {
+        id: c.id,
+        name: c.name,
+        isInternal: c.is_internal,
+        generated: s.total,
+        published: s.published,
+        pending: rows.filter((r) => r.group === "review" && r.clientId === c.id).length,
+        overdue: overdueByClient.get(c.id) ?? 0,
+      };
+    });
+
   return (
-    <section className="rounded-lg border border-accent-deep/30 bg-tint/40 p-4">
-      <h2 className="mb-3 text-sm font-semibold text-accent-deep">
-        내 담당 콘텐츠
-      </h2>
-      {plans.length === 0 ? (
-        <p className="text-sm text-muted">담당 중인 플랜이 없습니다.</p>
-      ) : (
-        <ul className="space-y-2">
-          {plans.slice(0, 10).map((p) => (
-            <li key={p.id} className="flex items-center justify-between text-sm">
-              <Link
-                href={`/generate?planId=${p.id}&channel=${p.channel}&title=${encodeURIComponent(p.title)}`}
-                className="truncate text-ink hover:text-accent-deep hover:underline"
-              >
-                {p.title}
-              </Link>
-              <span className="ml-3 shrink-0 text-xs text-muted">
-                {clientName(p.client_id)} · {channelLabel(p.channel)} ·{" "}
-                {planStatusLabel(p.status)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <div className="space-y-6">
+      <TodayView rows={rows} events={events} clients={clientSummaries} me={{ id: profile.id, name: profile.name }} today={today} ym={ym} />
+      <div className="mx-auto max-w-6xl">
+        <TrackerSummary />
+      </div>
+    </div>
   );
 }

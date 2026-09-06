@@ -42,6 +42,22 @@ export async function POST(req: NextRequest) {
     return new Response("clientId, channel, topic는 필수입니다.", { status: 400 });
   }
 
+  // 플랜에서 진입한 경우 그 플랜이 이 고객사의 것인지 확인 — 아니면 연결하지 않는다 [코덱스 2차 ①]
+  const planId: string | null = body.planId ?? null;
+  if (planId) {
+    const { data: plan } = await supabase
+      .from("content_plans")
+      .select("id, client_id, channel")
+      .eq("id", planId)
+      .maybeSingle();
+    if (!plan || plan.client_id !== body.clientId) {
+      return new Response("이 플랜은 지금 고른 고객사의 것이 아닙니다. 고객사 카드에서 플랜을 다시 여세요.", { status: 400 });
+    }
+    if (plan.channel !== body.channel) {
+      return new Response("플랜의 채널과 생성 채널이 다릅니다.", { status: 400 });
+    }
+  }
+
   // 채널 프리셋 조회
   const { data: settings } = await supabase
     .from("channel_settings")
@@ -124,7 +140,7 @@ export async function POST(req: NextRequest) {
           .from("contents")
           .insert({
             client_id: body.clientId,
-            plan_id: body.planId ?? null,
+            plan_id: planId,
             channel: body.channel,
             content_type: body.contentType ?? null,
             title: body.topic.trim().slice(0, 120),
@@ -148,11 +164,12 @@ export async function POST(req: NextRequest) {
         }
 
         // 플랜 연결 시 상태를 review로
-        if (body.planId) {
+        if (planId) {
           await supabase
             .from("content_plans")
             .update({ status: "review" })
-            .eq("id", body.planId);
+            .eq("id", planId)
+            .eq("client_id", body.clientId);
         }
 
         // 사용량 기록

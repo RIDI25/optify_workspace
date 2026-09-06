@@ -1,149 +1,39 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState, useSyncExternalStore } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
-import {
-  COLLAPSIBLE_SECTIONS,
-  DEFAULT_QUERY,
-  NAV_BLOCKS,
-  NAV_ITEMS,
-  type NavBlockKey,
-  type NavItem,
-  type NavRelevance,
-} from "@/lib/nav";
-import { getService } from "@/lib/services";
-import { createClient } from "@/lib/supabase/client";
+import { Suspense } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { CLIENT_TABS, NAV_ITEMS, clientPath, parseClientPath, type NavItem } from "@/lib/nav";
 import { useClientContext } from "@/components/providers/client-context";
 import type { Role } from "@/types/database";
 
-type ServiceLite = { service_type: string; status: string };
-
-// ── 선택한 고객사의 계약 서비스 (표시용) ─────────────────────────
-function useClientServices(clientId: string | null): ServiceLite[] | null {
-  const [state, setState] = useState<{ clientId: string | null; rows: ServiceLite[] }>({
-    clientId: null,
-    rows: [],
-  });
-  useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-    createClient()
-      .from("client_services")
-      .select("service_type, status")
-      .eq("client_id", clientId)
-      .then(({ data }) => {
-        if (active) setState({ clientId, rows: (data ?? []) as ServiceLite[] });
-      });
-    return () => {
-      active = false;
-    };
-  }, [clientId]);
-  return state.clientId === clientId ? state.rows : null;
-}
-
-/** 계약으로 본 메뉴 관련성. 등록된 서비스가 없거나 아직 모르면 전부 관련 있음. */
-function relevanceOf(rows: ServiceLite[] | null): Record<NavRelevance, boolean> {
-  const known = (rows ?? []).map((r) => ({ def: getService(r.service_type), status: r.status })).filter((r) => r.def);
-  if (known.length === 0) return { content: true, report: true };
-  const active = known.filter((r) => r.status === "active").map((r) => r.def!);
-  return {
-    content: active.some((s) => s.channels.length > 0),
-    report: active.some((s) => s.billing === "period"),
-  };
-}
-
-// ── 접기/펼치기 상태 (브라우저에 기억) ───────────────────────────
-const OPEN_EVENT = "optify:nav-open";
-function subscribeOpen(cb: () => void) {
-  window.addEventListener("storage", cb);
-  window.addEventListener(OPEN_EVENT, cb);
-  return () => {
-    window.removeEventListener("storage", cb);
-    window.removeEventListener(OPEN_EVENT, cb);
-  };
-}
-function useStoredOpen(key: string, initial: boolean): [boolean, (v: boolean) => void] {
-  const value = useSyncExternalStore(
-    subscribeOpen,
-    () => {
-      try {
-        const s = window.localStorage.getItem(key);
-        return s === null ? initial : s === "1";
-      } catch {
-        return initial;
-      }
-    },
-    () => initial,
-  );
-  const set = (v: boolean) => {
-    try {
-      window.localStorage.setItem(key, v ? "1" : "0");
-    } catch {
-      // 저장 못 해도 동작에는 지장 없음
-    }
-    window.dispatchEvent(new Event(OPEN_EVENT));
-  };
-  return [value, set];
-}
-
-// ── 활성 판단: 경로 + 쿼리(view) ────────────────────────────────
-function parseHref(href: string): { path: string; params: URLSearchParams } {
-  const [path, q] = href.split("?");
-  return { path, params: new URLSearchParams(q ?? "") };
-}
-function useIsActive() {
-  const pathname = usePathname();
-  const search = useSearchParams();
-  return (href: string) => {
-    const { path, params } = parseHref(href);
-    const pathOk = path === "/" ? pathname === "/" : pathname.startsWith(path);
-    if (!pathOk) return false;
-    for (const [k, v] of params) {
-      if ((search.get(k) ?? DEFAULT_QUERY[k]) !== v) return false;
-    }
-    return true;
-  };
-}
-
-// ── 조각 ────────────────────────────────────────────────────────
+/**
+ * 왼쪽 메뉴 — 질문 다섯 개(오늘·고객사·영업·정산·일정) + 보조.
+ * 고객사 카드 안에 있으면 '고객사' 아래에 고객사 선택과 탭(개요·콘텐츠·SEO·GEO·통합리포트·기본정보)이 펼쳐진다.
+ */
 function NavLink({
   item,
   active,
-  dim,
-  block,
+  sub,
   onNavigate,
 }: {
-  item: NavItem;
+  item: { href: string; label: string; icon?: string };
   active: boolean;
-  dim: boolean;
-  block: NavBlockKey;
+  sub?: boolean;
   onNavigate?: () => void;
 }) {
-  const activeCls = block === "client" ? "bg-surface text-accent-deep shadow-sm ring-1 ring-accent/30" : "bg-tint text-accent-deep";
   return (
     <Link
       href={item.href}
       onClick={onNavigate}
-      title={dim ? "이 고객사 계약에는 없는 업무입니다 (열 수는 있어요)" : undefined}
       className={[
-        "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
-        active ? activeCls : "text-ink hover:bg-surface/80",
-        dim && !active ? "opacity-45" : "",
+        "flex items-center gap-2 rounded-md transition-colors",
+        sub ? "ml-6 px-2.5 py-1 text-[13px]" : "px-2.5 py-1.5 text-sm font-semibold",
+        active ? "bg-tint text-accent-deep" : sub ? "text-muted hover:bg-subtle hover:text-ink" : "text-ink hover:bg-subtle",
       ].join(" ")}
     >
-      {item.step != null && (
-        <span
-          className={[
-            "inline-flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded font-mono text-[10px]",
-            active ? "bg-accent-deep text-white" : "bg-subtle text-muted",
-          ].join(" ")}
-        >
-          {item.step}
-        </span>
-      )}
-      {item.icon && (
-        <span className="w-4 shrink-0 text-center text-[13px]" aria-hidden>
+      {item.icon && !sub && (
+        <span className="w-5 shrink-0 text-center text-[14px]" aria-hidden>
           {item.icon}
         </span>
       )}
@@ -152,155 +42,108 @@ function NavLink({
   );
 }
 
-function Caption({ children, tone = "muted" }: { children: React.ReactNode; tone?: "muted" | "accent" }) {
+/** 고객사 카드 안: 고객사 선택 + 탭 */
+function ClientBlock({ clientId, tab, onNavigate }: { clientId: string; tab: string | null; onNavigate?: () => void }) {
+  const router = useRouter();
+  const { clients, loading } = useClientContext();
+  const current = clients.find((c) => c.id === clientId);
   return (
-    <p className={["px-2.5 pb-0.5 pt-2.5 text-[11px] font-semibold tracking-wide", tone === "accent" ? "text-accent-deep" : "text-muted"].join(" ")}>
-      {children}
-    </p>
-  );
-}
-
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      aria-hidden
-      className={["transition-transform", open ? "rotate-90" : ""].join(" ")}
-    >
-      <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/** 고객사 선택 + 진행중 계약 칩. 고객사 업무 블록의 머리 */
-function ClientPicker({ services }: { services: ServiceLite[] | null }) {
-  const { clients, selectedClientId, setSelectedClientId, loading } = useClientContext();
-  if (loading) return <p className="px-2.5 py-1 text-xs text-muted">고객사 불러오는 중…</p>;
-  if (clients.length === 0) {
-    return (
-      <p className="px-2.5 py-1 text-xs text-muted">
-        고객사가 없습니다.{" "}
-        <Link href="/settings" className="text-accent-deep hover:underline">
-          설정에서 등록
-        </Link>
-      </p>
-    );
-  }
-  const activeServices = (services ?? [])
-    .filter((s) => s.status === "active")
-    .map((s) => getService(s.service_type))
-    .filter((s): s is NonNullable<typeof s> => Boolean(s));
-  return (
-    <div className="px-2 pb-1 pt-1">
-      <select
-        value={selectedClientId ?? ""}
-        onChange={(e) => setSelectedClientId(e.target.value)}
-        aria-label="고객사 선택"
-        className="w-full rounded-md border border-accent/40 bg-surface px-2 py-1.5 text-sm font-semibold text-accent-deep outline-none focus:border-accent"
-      >
-        {clients.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-            {c.is_internal ? " (내부)" : ""}
-          </option>
-        ))}
-      </select>
-      <div className="mt-1.5 flex flex-wrap gap-1 px-0.5">
-        {services === null ? null : activeServices.length === 0 ? (
-          <Link href="/settings" className="text-[11px] text-muted hover:text-accent-deep hover:underline">
-            진행중 계약 없음 · 설정에서 등록
+    <div className="ml-3 mt-1 rounded-lg border border-accent/30 bg-tint/60 p-1.5">
+      {loading ? (
+        <p className="px-2 py-1 text-xs text-muted">고객사 불러오는 중…</p>
+      ) : (
+        <select
+          value={clientId}
+          onChange={(e) => {
+            router.push(clientPath(e.target.value, (tab as (typeof CLIENT_TABS)[number]["key"]) ?? "overview"));
+            onNavigate?.();
+          }}
+          aria-label="고객사 선택"
+          className="mb-1 w-full rounded-md border border-accent/40 bg-surface px-2 py-1.5 text-sm font-semibold text-accent-deep outline-none focus:border-accent"
+        >
+          {!current && <option value={clientId}>(고객사)</option>}
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+              {c.is_internal ? " (내부)" : ""}
+            </option>
+          ))}
+        </select>
+      )}
+      {CLIENT_TABS.map((t) => {
+        const active = tab === t.key;
+        return (
+          <Link
+            key={t.key}
+            href={clientPath(clientId, t.key)}
+            onClick={onNavigate}
+            className={[
+              "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px]",
+              active ? "bg-surface font-semibold text-accent-deep shadow-sm ring-1 ring-accent/30" : "text-ink hover:bg-surface/80",
+            ].join(" ")}
+          >
+            {t.icon && (
+              <span className="w-4 text-center text-[12px]" aria-hidden>
+                {t.icon}
+              </span>
+            )}
+            {t.label}
           </Link>
-        ) : (
-          activeServices.map((s) => (
-            <span
-              key={s.key}
-              title={s.description}
-              className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-medium text-accent-deep ring-1 ring-accent/30"
-            >
-              {s.emoji} {s.label}
-            </span>
-          ))
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 }
 
-// ── 메뉴 본체 ───────────────────────────────────────────────────
-function NavListInner({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
-  const isActive = useIsActive();
-  const { selectedClientId } = useClientContext();
-  const services = useClientServices(selectedClientId);
-  const relevance = relevanceOf(services);
-  const [contentOpenStored, setContentOpen] = useStoredOpen("optify.nav.contentOpen", true);
-
-  const visible = NAV_ITEMS.filter((item) => !item.ownerOnly || role === "owner");
+function NavListInner({ onNavigate }: { onNavigate?: () => void }) {
+  const pathname = usePathname();
+  const inClient = parseClientPath(pathname);
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const primaries = NAV_ITEMS.filter((i) => !i.parent && !i.aux);
+  const subsOf = (href: string) => NAV_ITEMS.filter((i) => i.parent === href);
+  const auxes = NAV_ITEMS.filter((i) => i.aux);
+  /** 상위 항목은 자기 또는 하위 항목 경로에서 켜진다 */
+  const primaryActive = (item: NavItem) =>
+    isActive(item.href) || subsOf(item.href).some((s) => isActive(s.href)) || (item.href === "/clients" && !!inClient);
 
   return (
-    <nav className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
-      {NAV_BLOCKS.map((b) => {
-        const items = visible.filter((i) => i.block === b.key);
-        const isClient = b.key === "client";
-        return (
-          <div
-            key={b.key}
+    <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
+      {primaries.map((item) => (
+        <div key={item.href}>
+          <NavLink item={item} active={primaryActive(item)} onNavigate={onNavigate} />
+          {item.href === "/clients" && inClient && (
+            <ClientBlock clientId={inClient.clientId} tab={inClient.tab} onNavigate={onNavigate} />
+          )}
+          {subsOf(item.href).map((s) => (
+            <NavLink key={s.href} item={s} active={isActive(s.href)} sub onNavigate={onNavigate} />
+          ))}
+        </div>
+      ))}
+      <div className="pt-4">
+        <p className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-muted">보조</p>
+        {auxes.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
             className={[
-              "rounded-xl border p-1.5",
-              isClient ? "border-accent/30 bg-tint/70" : "border-border bg-subtle/70",
+              "block rounded-md px-2.5 py-1 text-[13px]",
+              isActive(item.href) ? "bg-tint text-accent-deep" : "text-muted hover:bg-subtle hover:text-ink",
             ].join(" ")}
           >
-            <p
-              className={[
-                "flex items-center gap-1.5 px-2 pb-1 pt-1 text-[11px] font-bold tracking-wide",
-                isClient ? "text-accent-deep" : "text-ink",
-              ].join(" ")}
-            >
-              <span aria-hidden>{b.icon}</span>
-              {b.label}
-            </p>
-            {isClient && <ClientPicker services={services} />}
-
-            {items.map((item, i) => {
-              const showSection = item.section && items[i - 1]?.section !== item.section;
-              const collapsible = item.section ? COLLAPSIBLE_SECTIONS.includes(item.section) : false;
-              const sectionActive = collapsible && items.some((x) => x.section === item.section && isActive(x.href));
-              const open = !collapsible || contentOpenStored || sectionActive;
-              const dim = item.relevance ? !relevance[item.relevance] : false;
-              return (
-                <div key={item.href}>
-                  {showSection &&
-                    (collapsible ? (
-                      <button
-                        type="button"
-                        onClick={() => setContentOpen(!open)}
-                        aria-expanded={open}
-                        className="mt-1.5 flex w-full items-center justify-between rounded-md px-2.5 py-1 text-[11px] font-semibold tracking-wide text-accent-deep hover:bg-surface/80"
-                      >
-                        <span>{item.section}</span>
-                        <Chevron open={open} />
-                      </button>
-                    ) : (
-                      <Caption tone={isClient ? "accent" : "muted"}>{item.section}</Caption>
-                    ))}
-                  {open && <NavLink item={item} active={isActive(item.href)} dim={dim} block={b.key} onNavigate={onNavigate} />}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
+            {item.label}
+          </Link>
+        ))}
+      </div>
     </nav>
   );
 }
 
-/** 데스크톱 사이드바·모바일 드로어 공용 메뉴 목록 */
-export function NavList(props: { role: Role; onNavigate?: () => void }) {
+/** 데스크톱 사이드바·모바일 드로어 공용 메뉴 목록 (role 은 하위 호환용 — 2인 모두 같은 권한) */
+export function NavList(props: { role?: Role; onNavigate?: () => void }) {
   return (
     <Suspense fallback={null}>
-      <NavListInner {...props} />
+      <NavListInner onNavigate={props.onNavigate} />
     </Suspense>
   );
 }
@@ -315,9 +158,7 @@ export function Sidebar({ role }: { role: Role }) {
 
       <NavList role={role} />
 
-      <div className="border-t border-border px-5 py-3 text-xs text-muted">
-        {role === "owner" ? "관리자(owner)" : "멤버(member)"}
-      </div>
+      <div className="border-t border-border px-5 py-3 text-xs text-muted">2인 팀 · 같은 권한</div>
     </aside>
   );
 }

@@ -12,6 +12,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
+import { setInvoicePaidAt, setInvoiceStatus } from "@/lib/actions/revenue";
 import { DEAL_CHANNELS } from "@/lib/deal-channels";
 import { won } from "@/lib/export/quote-model";
 import { PaymentsSection } from "@/components/revenue/payments-section";
@@ -194,51 +195,22 @@ export function RevenueView({ readOnly = false }: { readOnly?: boolean }) {
     reload();
   }
 
-  const AUTO_PAYMENT_MEMO = "상태를 입금완료로 바꿔 자동 기록";
-
-  /** 상태 변경. 입금완료로 바꾸면 남은 금액을 입금 내역에 자동 기록해 입금·미수금 집계와 어긋나지 않게 한다. */
+  /** 상태 변경 — 서버가 입금 합계를 다시 읽어 남은 금액을 기록하거나 자동 기록분을 지운다 [코덱스 2차 ③] */
   async function updateStatus(inv: TaxInvoice, status: TaxInvoiceStatus) {
-    const supabase = createClient();
-    const paid_at = status === "paid" ? (inv.paid_at ?? localDate()) : null;
-    const { error } = await supabase
-      .from("tax_invoices")
-      .update({ status, paid_at, updated_at: new Date().toISOString() })
-      .eq("id", inv.id);
-    if (error) {
-      setMsg(`상태 변경 실패: ${error.message}`);
+    const r = await setInvoiceStatus(inv.id, status);
+    if (!r.ok) {
+      setMsg(`상태 변경 실패: ${r.error}`);
       return;
-    }
-    if (status === "paid") {
-      const alreadyPaid = payments
-        .filter((p) => p.invoice_id === inv.id)
-        .reduce((s, p) => s + Number(p.amount), 0);
-      const remaining = Number(inv.total_amount) - alreadyPaid;
-      if (remaining > 0) {
-        await supabase.from("invoice_payments").insert({
-          invoice_id: inv.id,
-          paid_date: paid_at,
-          amount: remaining,
-          kind: "other",
-          memo: AUTO_PAYMENT_MEMO,
-        });
-      }
-    } else if (inv.status === "paid") {
-      // 입금완료를 되돌리면 자동 기록분만 지운다 (손으로 넣은 입금은 그대로)
-      await supabase
-        .from("invoice_payments")
-        .delete()
-        .eq("invoice_id", inv.id)
-        .eq("memo", AUTO_PAYMENT_MEMO);
     }
     reload();
   }
 
   async function updatePaidAt(inv: TaxInvoice, paid_at: string) {
-    const supabase = createClient();
-    await supabase
-      .from("tax_invoices")
-      .update({ paid_at: paid_at || null, updated_at: new Date().toISOString() })
-      .eq("id", inv.id);
+    const r = await setInvoicePaidAt(inv.id, paid_at || null);
+    if (!r.ok) {
+      setMsg(`입금일 변경 실패: ${r.error}`);
+      return;
+    }
     reload();
   }
 

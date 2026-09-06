@@ -1,71 +1,77 @@
 /**
- * 사이드바 네비게이션 정의 (config 기반). 2026-09-06 재편.
+ * 사이드바 네비게이션 정의 (config 기반). 2026-09-06 개편안 1차: "질문 다섯 개".
  *
- * 왼쪽 메뉴는 두 블록으로 나뉜다.
- * - 옵티파이 내부 업무: 대시보드 · 영업 · 회계 · 팀 · 관리 — 고객사와 무관한 우리 일
- * - 고객사 업무: 고객사를 고른 뒤 그 고객사의 콘텐츠(접이식) · SEO · GEO · 통합리포트
- *   계약 서비스(client_services)에 없는 업무는 흐리게 표시만 한다 — 숨기지 않는다 (기능 변화 없음).
+ * - 오늘: 지금 무엇을 처리해야 하나 (/)
+ * - 고객사: 이 고객의 일이 어디까지 왔나 (/clients → /clients/[id]/[탭])
+ * - 영업: 누구에게 어떤 다음 행동을 (/sales, /diagnosis, /quotes)
+ * - 정산: 청구했고 들어왔고 남았나 (/revenue, /ledger)
+ * - 일정: 언제 무엇이 예정돼 있나 (/schedule, /tasks)
+ * - 보조: 설정, 데일리 소식
  *
- * href 에 쿼리가 붙은 항목(예: /tracking?view=seo)은 같은 화면을 다른 관점으로 여는 것이다.
+ * 콘텐츠(키워드·플랜·생성·라이브러리)·SEO·GEO·리포트는 고객사 카드의 탭이다 (CLIENT_TABS).
+ * 옛 주소(/plans 등)는 그대로 열리되 지금 고객사의 카드로 안내한다.
+ * 2026-09-06 결정: 팀원 2명 모두 같은 권한 → ownerOnly 구분 없음.
  */
-
-export type NavBlockKey = "internal" | "client";
-
-/** 메뉴 항목이 어떤 계약 서비스와 관련 있는지. content=콘텐츠 채널이 있는 계약, report=기간제 계약 */
-export type NavRelevance = "content" | "report";
 
 export interface NavItem {
   href: string;
   label: string;
-  block: NavBlockKey;
-  /** 블록 안의 소제목 (내부: 영업/회계/팀/관리, 고객사: 콘텐츠) */
-  section?: string;
-  /** 콘텐츠 워크플로우 단계 번호 (1~4) — 뱃지로 표시 */
-  step?: number;
+  /** 소속 질문(상위 항목)의 href. 없으면 상위 항목 자신 */
+  parent?: string;
   /** 항목 앞 아이콘 (이모지) */
   icon?: string;
-  /** owner 전용 메뉴 여부 */
-  ownerOnly?: boolean;
-  /** 선택한 고객사 계약과 무관하면 흐리게 */
-  relevance?: NavRelevance;
+  /** 보조 메뉴(아래쪽 작은 글씨) */
+  aux?: boolean;
 }
-
-export interface NavBlock {
-  key: NavBlockKey;
-  label: string;
-  icon: string;
-}
-
-export const NAV_BLOCKS: NavBlock[] = [
-  { key: "internal", label: "옵티파이 내부 업무", icon: "🏢" },
-  { key: "client", label: "고객사 업무", icon: "🤝" },
-];
-
-/** 접었다 폈다 할 수 있는 소제목 */
-export const COLLAPSIBLE_SECTIONS = ["콘텐츠"];
-
-/** 쿼리가 없는 주소가 뜻하는 기본 관점 (활성 표시 판단용) */
-export const DEFAULT_QUERY: Record<string, string> = { view: "geo" };
 
 export const NAV_ITEMS: NavItem[] = [
-  // ── 옵티파이 내부 업무 ─────────────────────────────────────
-  { href: "/", label: "대시보드", block: "internal", icon: "🏠" },
-  { href: "/sales", label: "리드 · 영업", block: "internal", section: "영업" }, // member는 조회만 (RLS 0023)
-  { href: "/diagnosis", label: "SEO 진단", block: "internal", section: "영업", ownerOnly: true },
-  { href: "/quotes", label: "견적서 · 계약서", block: "internal", section: "영업", ownerOnly: true },
-  { href: "/revenue", label: "매출 · 세금계산서", block: "internal", section: "회계" }, // member는 조회만 (RLS 0023)
-  { href: "/ledger", label: "장부", block: "internal", section: "회계" },
-  { href: "/tasks", label: "업무", block: "internal", section: "팀" },
-  { href: "/schedule", label: "스케줄", block: "internal", section: "팀" },
-  { href: "/daily", label: "데일리 리포트", block: "internal", section: "팀" },
-  { href: "/settings", label: "설정 (고객사 · 채널 · 팀)", block: "internal", section: "관리" }, // member는 조회만
-
-  // ── 고객사 업무 ───────────────────────────────────────────
-  { href: "/keywords", label: "키워드 리서치", block: "client", section: "콘텐츠", step: 1, relevance: "content" },
-  { href: "/plans", label: "콘텐츠 플랜", block: "client", section: "콘텐츠", step: 2, relevance: "content" },
-  { href: "/generate", label: "콘텐츠 생성", block: "client", section: "콘텐츠", step: 3, relevance: "content" },
-  { href: "/library", label: "라이브러리 · 발행", block: "client", section: "콘텐츠", step: 4, relevance: "content" },
-  { href: "/tracking?view=seo", label: "SEO", block: "client", icon: "🔎" }, // 검색 순위 (옵티파이 트래커)
-  { href: "/tracking?view=geo", label: "GEO", block: "client", icon: "✨" }, // AI 노출 (옵티파이 트래커)
-  { href: "/reports", label: "통합리포트", block: "client", icon: "📊", relevance: "report" }, // 월간 리포트 (GSC·GA4·네이버·콘텐츠)
+  { href: "/", label: "오늘", icon: "☀️" },
+  { href: "/clients", label: "고객사", icon: "🤝" },
+  { href: "/sales", label: "영업", icon: "📞" },
+  { href: "/diagnosis", label: "SEO 진단", parent: "/sales" },
+  { href: "/quotes", label: "견적서 · 계약서", parent: "/sales" },
+  { href: "/revenue", label: "정산", icon: "💳" },
+  { href: "/ledger", label: "장부", parent: "/revenue" },
+  { href: "/schedule", label: "일정", icon: "📅" },
+  { href: "/tasks", label: "업무 보드", parent: "/schedule" },
+  { href: "/settings", label: "설정 (팀 · 연동 · 사용량)", aux: true },
+  { href: "/daily", label: "데일리 소식", aux: true },
 ];
+
+/** 고객사 카드의 탭. /clients/[id]/[key] */
+export interface ClientTab {
+  key: "overview" | "content" | "seo" | "geo" | "reports" | "info";
+  label: string;
+  icon?: string;
+}
+
+export const CLIENT_TABS: ClientTab[] = [
+  { key: "overview", label: "개요" },
+  { key: "content", label: "콘텐츠" },
+  { key: "seo", label: "SEO", icon: "🔎" },
+  { key: "geo", label: "GEO", icon: "✨" },
+  { key: "reports", label: "통합리포트", icon: "📊" },
+  { key: "info", label: "기본정보" },
+];
+
+export function clientPath(clientId: string, tab: ClientTab["key"] = "overview", query?: string): string {
+  return `/clients/${clientId}/${tab}${query ? `?${query}` : ""}`;
+}
+
+/** 현재 경로에서 고객사 카드 안인지와 어느 탭인지 */
+export function parseClientPath(pathname: string): { clientId: string; tab: ClientTab["key"] | null } | null {
+  const m = pathname.match(/^\/clients\/([^/]+)(?:\/([^/?]+))?/);
+  if (!m) return null;
+  const tab = CLIENT_TABS.find((t) => t.key === m[2])?.key ?? null;
+  return { clientId: m[1], tab };
+}
+
+/** 옛 주소 → 고객사 카드 탭 (쿼리는 그대로 넘긴다) */
+export const LEGACY_ROUTES: Record<string, { tab: ClientTab["key"]; view?: string }> = {
+  "/keywords": { tab: "content", view: "keywords" },
+  "/plans": { tab: "content", view: "plans" },
+  "/generate": { tab: "content", view: "generate" },
+  "/library": { tab: "content", view: "library" },
+  "/reports": { tab: "reports" },
+  "/tracking": { tab: "geo" },
+};

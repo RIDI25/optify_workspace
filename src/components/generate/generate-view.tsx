@@ -24,7 +24,26 @@ import type { ChannelSettings } from "@/types/database";
 export function GenerateView() {
   const { selectedClientId, selectedClient } = useClientContext();
   const searchParams = useSearchParams();
-  const planId = searchParams.get("planId");
+  const planIdParam = searchParams.get("planId");
+  // URL 의 플랜이 지금 고객사의 것인지 확인한 뒤에만 연결한다 [코덱스 2차 ①]
+  const [planCheck, setPlanCheck] = useState<{ planId: string | null; ok: boolean }>({ planId: null, ok: false });
+  useEffect(() => {
+    if (!planIdParam || !selectedClientId) return;
+    let active = true;
+    createClient()
+      .from("content_plans")
+      .select("id, client_id")
+      .eq("id", planIdParam)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setPlanCheck({ planId: planIdParam, ok: !!data && data.client_id === selectedClientId });
+      });
+    return () => {
+      active = false;
+    };
+  }, [planIdParam, selectedClientId]);
+  const planId = planIdParam && planCheck.planId === planIdParam && planCheck.ok ? planIdParam : null;
+  const planMismatch = !!planIdParam && planCheck.planId === planIdParam && !planCheck.ok;
 
   const [channels, setChannels] = useState<ChannelSettings[]>([]);
   const [channel, setChannel] = useState<string>(
@@ -166,9 +185,15 @@ export function GenerateView() {
   }
 
   const naverReady = isNaver && status === "done" && !!body;
+  const planNotice = planMismatch ? (
+    <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      주소에 있는 플랜은 다른 고객사의 것이라 연결하지 않습니다. 이 고객사의 콘텐츠 작업에서 플랜을 다시 여세요.
+    </p>
+  ) : null;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      {planNotice}
       <div>
         <h1 className="text-xl font-bold text-ink">콘텐츠 생성</h1>
         <p className="mt-1 text-sm text-muted">

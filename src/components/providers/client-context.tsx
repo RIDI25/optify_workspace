@@ -17,6 +17,8 @@ interface ClientContextValue {
   selectedClient: Client | null;
   setSelectedClientId: (id: string) => void;
   loading: boolean;
+  /** 고객사를 만들거나 이름을 바꾼 뒤 목록을 다시 읽는다 */
+  refreshClients: () => Promise<Client[]>;
 }
 
 const ClientContext = createContext<ClientContextValue | null>(null);
@@ -54,6 +56,18 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const refreshClients = async (): Promise<Client[]> => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("clients")
+      .select("*")
+      .order("is_internal", { ascending: false })
+      .order("created_at", { ascending: true });
+    const rows = (data ?? []) as Client[];
+    setClients(rows);
+    return rows;
+  };
+
   const setSelectedClientId = (id: string) => {
     setSelected(id);
     if (typeof window !== "undefined") {
@@ -68,6 +82,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       selectedClient: clients.find((c) => c.id === selectedClientId) ?? null,
       setSelectedClientId,
       loading,
+      refreshClients,
     }),
     [clients, selectedClientId, loading],
   );

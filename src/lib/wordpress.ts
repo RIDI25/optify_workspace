@@ -1,3 +1,4 @@
+import { safeFetch } from "@/lib/url-guard";
 /** WordPress REST API 클라이언트 (Application Password Basic Auth). 서버 전용. */
 
 function normalize(url: string): string {
@@ -16,7 +17,7 @@ export async function wpTestConnection(
   appPassword: string,
 ): Promise<{ ok: boolean; name?: string; error?: string }> {
   try {
-    const res = await fetch(`${normalize(url)}/wp-json/wp/v2/users/me`, {
+    const res = await safeFetch(`${normalize(url)}/wp-json/wp/v2/users/me`, {
       headers: { Authorization: authHeader(username, appPassword) },
     });
     if (!res.ok) {
@@ -40,7 +41,7 @@ export async function wpUploadMedia(
   alt: string,
 ): Promise<{ id: number }> {
   const base = normalize(url);
-  const res = await fetch(`${base}/wp-json/wp/v2/media`, {
+  const res = await safeFetch(`${base}/wp-json/wp/v2/media`, {
     method: "POST",
     headers: {
       Authorization: authHeader(username, appPassword),
@@ -57,7 +58,7 @@ export async function wpUploadMedia(
 
   // alt_text 설정(실패는 무시)
   if (alt) {
-    await fetch(`${base}/wp-json/wp/v2/media/${data.id}`, {
+    await safeFetch(`${base}/wp-json/wp/v2/media/${data.id}`, {
       method: "POST",
       headers: {
         Authorization: authHeader(username, appPassword),
@@ -85,7 +86,7 @@ export async function wpCreateDraft(
   };
   if (featuredMediaId) payload.featured_media = featuredMediaId;
 
-  const res = await fetch(`${normalize(url)}/wp-json/wp/v2/posts`, {
+  const res = await safeFetch(`${normalize(url)}/wp-json/wp/v2/posts`, {
     method: "POST",
     headers: {
       Authorization: authHeader(username, appPassword),

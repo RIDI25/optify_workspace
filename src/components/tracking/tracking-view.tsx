@@ -28,10 +28,10 @@ const TABS: { key: Tab; label: string }[] = [
  * AI 노출·검색 순위 (옵티파이 트래커 결과). 트래커 콘솔의 개요·추세·결과 보기를 한 화면의 탭으로.
  * 데이터는 맥의 트래커가 Supabase 로 올린 것(읽기 전용). 실행·설정은 아직 맥 앱에서.
  */
-export function TrackingView() {
+export function TrackingView({ scope: fixedScope }: { scope?: TrackingScope } = {}) {
   const { selectedClientId, selectedClient, loading: clientsLoading } = useClientContext();
   const params = useSearchParams();
-  const scope: TrackingScope = params.get("view") === "seo" ? "seo" : "geo";
+  const scope: TrackingScope = fixedScope ?? (params.get("view") === "seo" ? "seo" : "geo");
   const scopeDef = SCOPES.find((s) => s.key === scope) ?? SCOPES[0];
   const [tab, setTab] = useState<Tab>("overview");
   // 고객사별로 불러온 상태. clientId 가 다르면 아직 불러오는 중
@@ -97,6 +97,7 @@ export function TrackingView() {
           </h1>
           <p className="mt-1 text-sm text-muted">{scopeDef.desc}</p>
         </div>
+        {!fixedScope && (
         <div className="flex gap-1 rounded-full border border-border bg-surface p-0.5">
           {SCOPES.map((s) => (
             <Link
@@ -111,6 +112,7 @@ export function TrackingView() {
             </Link>
           ))}
         </div>
+        )}
       </div>
 
       <div className="flex gap-2 border-b border-border">

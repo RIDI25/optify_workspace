@@ -46,9 +46,7 @@ export function MobileNav({ role }: { role: Role }) {
               </button>
             </div>
             <NavList role={role} onNavigate={() => setOpen(false)} />
-            <div className="border-t border-border px-5 py-3 text-xs text-muted">
-              {role === "owner" ? "관리자(owner)" : "멤버(member)"}
-            </div>
+            <div className="border-t border-border px-5 py-3 text-xs text-muted">2인 팀 · 같은 권한</div>
           </div>
         </div>
       )}

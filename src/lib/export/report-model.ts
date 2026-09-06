@@ -47,8 +47,13 @@ export function buildReportModel(
     lines: [data.ai_summary?.trim() || "총평 미작성"],
   });
 
-  const cs = data.content_summary;
-  const csLines = [`총 생성 ${cs?.total ?? 0}건 · 발행 ${cs?.published ?? 0}건`];
+  const cs = data.content_summary as
+    | { total?: number; published?: number; byChannel?: Record<string, number>; wpDrafts?: number; external?: number }
+    | null
+    | undefined;
+  const csLines = [`총 생성 ${cs?.total ?? 0}건 · 발행 완료 ${cs?.published ?? 0}건`];
+  if (cs?.wpDrafts) csLines.push(`- WP 초안만 전송(미발행): ${cs.wpDrafts}건`);
+  if (cs?.external) csLines.push(`- 외부 작성 발행: ${cs.external}건 (발행 완료에 포함)`);
   for (const [ch, n] of Object.entries(cs?.byChannel ?? {})) {
     csLines.push(`- ${ch}: ${n}건`);
   }

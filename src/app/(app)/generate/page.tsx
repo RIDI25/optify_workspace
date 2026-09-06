@@ -1,13 +1,11 @@
 import { Suspense } from "react";
-import { ClientScoped } from "@/components/providers/client-scoped";
-import { GenerateView } from "@/components/generate/generate-view";
+import { LegacyRedirect } from "@/components/providers/legacy-redirect";
 
-export default function GeneratePage() {
+/** 옛 주소 — 지금 고객사의 카드 탭으로 안내 (2026-09-06 개편) */
+export default function LegacyPage() {
   return (
-    <Suspense fallback={<div className="text-sm text-muted">불러오는 중…</div>}>
-      <ClientScoped>
-        <GenerateView />
-      </ClientScoped>
+    <Suspense fallback={null}>
+      <LegacyRedirect from="/generate" />
     </Suspense>
   );
 }

@@ -39,8 +39,8 @@ export async function TrackerSummary() {
     <section className="rounded-lg border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ink">AI 노출 · 검색 순위 (트래커)</h2>
-        <Link href="/tracking" className="text-xs text-accent-deep hover:underline">
-          자세히 →
+        <Link href="/clients" className="text-xs text-accent-deep hover:underline">
+          고객사 →
         </Link>
       </div>
       <div className="overflow-x-auto">
@@ -59,7 +59,11 @@ export async function TrackerSummary() {
               const latest = latestByClient.get(c.client_id);
               return (
                 <tr key={c.client_id} className="border-b border-border/60 last:border-0">
-                  <td className="px-2 py-1 font-medium text-ink">{c.name}</td>
+                  <td className="px-2 py-1 font-medium text-ink">
+                    <Link href={`/clients/${c.client_id}/geo`} className="hover:underline">
+                      {c.name}
+                    </Link>
+                  </td>
                   <td className="px-2 py-1">{c.active ? "켜짐" : "대기"}</td>
                   <td className="px-2 py-1">{latest ? shortTime(latest.started_at) : "-"}</td>
                   <td className="px-2 py-1">{latest ? (STATUS_LABELS[latest.status] ?? latest.status) : "-"}</td>

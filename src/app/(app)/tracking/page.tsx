@@ -1,11 +1,11 @@
 import { Suspense } from "react";
-import { TrackingView } from "@/components/tracking/tracking-view";
+import { LegacyRedirect } from "@/components/providers/legacy-redirect";
 
-/** ?view=geo (AI 노출) | ?view=seo (검색 순위). 같은 데이터를 관점만 바꿔 본다. */
-export default function TrackingPage() {
+/** 옛 주소 — 지금 고객사의 카드 탭으로 안내 (2026-09-06 개편) */
+export default function LegacyPage() {
   return (
     <Suspense fallback={null}>
-      <TrackingView />
+      <LegacyRedirect from="/tracking" />
     </Suspense>
   );
 }

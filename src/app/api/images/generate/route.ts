@@ -20,6 +20,9 @@ export async function POST(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return new NextResponse("Unauthorized", { status: 401 });
+  // 유료 생성·관리자 Storage 쓰기는 팀에 등록된 계정만 [코덱스 2차 ④]
+  const { data: me } = await supabase.from("profiles").select("id").eq("id", user.id).maybeSingle();
+  if (!me) return new NextResponse("Forbidden", { status: 403 });
 
   const { clientId, prompt, filename, alt } = await req.json();
   if (!prompt?.trim()) {

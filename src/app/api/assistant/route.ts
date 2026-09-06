@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
     .select("role")
     .eq("id", user.id)
     .single();
+  if (!profile) return new NextResponse("Forbidden", { status: 403 }); // 팀원만 [코덱스 2차 ④]
 
   const { messages } = (await req.json()) as {
     messages?: { role: "user" | "assistant"; content: string }[];
