@@ -24,6 +24,8 @@ interface DraftItem {
   unit_price: number;
 }
 
+const EMPTY_ITEM: Omit<DraftItem, "key"> = { category: null, name: "", detail: "", qty: 1, unit: "식", unit_price: 0 };
+
 function localDate(offsetDays = 0): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
@@ -61,8 +63,8 @@ export function QuoteForm({
   const [endClientName, setEndClientName] = useState("");
   const [quoteDate, setQuoteDate] = useState(localDate());
   const [validUntil, setValidUntil] = useState(localDate(QUOTE_VALID_DAYS));
-  const blankItem = (): DraftItem => ({ key: nextKey(), category: null, name: "", detail: "", qty: 1, unit: "식", unit_price: 0 });
-  const [items, setItems] = useState<DraftItem[]>(() => [blankItem()]);
+  const blankItem = (): DraftItem => ({ ...EMPTY_ITEM, key: nextKey() });
+  const [items, setItems] = useState<DraftItem[]>([{ ...EMPTY_ITEM, key: 0 }]); // 첫 줄은 key 0, 이후는 nextKey() 로 1부터
   const [vatMode, setVatMode] = useState<VatMode>("excluded");
   const [notes, setNotes] = useState("");
   const [savedQuoteId, setSavedQuoteId] = useState<string | null>(null);
