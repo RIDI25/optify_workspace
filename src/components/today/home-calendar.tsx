@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { DOW_KO_MON, EVENT_TYPES, SOURCE_STYLES, buildMonthGrid, eventTypeLabel, ymdOf } from "@/lib/schedule";
+import { DOW_KO, EVENT_TYPES, SOURCE_STYLES, buildMonthGrid, eventTypeLabel, ymdOf } from "@/lib/schedule";
 import type { CalendarEvent } from "@/types/database";
 
 export interface CalTask {
@@ -132,7 +132,7 @@ export function HomeCalendar({
 
   const weeks = buildMonthGrid(cursor.y, cursor.m);
   const pickedItems = byDate.get(picked) ?? [];
-  const pickedDow = DOW_KO_MON[(new Date(`${picked}T00:00:00`).getDay() + 6) % 7];
+  const pickedDow = DOW_KO[new Date(`${picked}T00:00:00`).getDay()];
 
   function moveMonth(delta: number) {
     const d = new Date(cursor.y, cursor.m + delta, 1);
@@ -221,8 +221,8 @@ export function HomeCalendar({
           </div>
         </div>
         <div className="grid grid-cols-7 text-center text-[11px] text-muted">
-          {DOW_KO_MON.map((d) => (
-            <div key={d} className="py-1 font-medium">
+          {DOW_KO.map((d, i) => (
+            <div key={d} className={["py-1 font-medium", i === 0 ? "text-red-500" : i === 6 ? "text-accent-deep" : ""].join(" ")}>
               {d}
             </div>
           ))}

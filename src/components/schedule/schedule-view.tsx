@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  DOW_KO_MON as DOW,
+  DOW_KO as DOW,
   EVENT_TYPES,
   SOURCE_LABELS,
   SOURCE_STYLES,
@@ -18,10 +18,10 @@ import type { CalendarEvent } from "@/types/database";
 const input =
   "rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm outline-none focus:border-accent-deep";
 
-/** anchor가 속한 주(월~일)의 날짜들 */
+/** anchor가 속한 주(일~토)의 날짜들 */
 function weekOf(anchor: Date): string[] {
   const start = new Date(anchor);
-  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+  start.setDate(start.getDate() - start.getDay());
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(start);
     d.setDate(start.getDate() + i);

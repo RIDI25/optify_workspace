@@ -31,15 +31,18 @@ export const SOURCE_LABELS: Record<string, string> = {
   invoice: "세금계산서",
 };
 
-export const DOW_KO_MON = ["월", "화", "수", "목", "금", "토", "일"];
+/** 요일 표시 — 일요일 시작 (2026-09-07 결정). 인덱스 = Date.getDay() */
+export const DOW_KO = ["일", "월", "화", "수", "목", "금", "토"];
+/** @deprecated 일요일 시작으로 바뀜 — DOW_KO 를 쓰세요 (같은 배열) */
+export const DOW_KO_MON = DOW_KO;
 
 export function ymdOf(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** 월 그리드 — 월요일 시작, 앞뒤 빈 칸은 null (홈 미니 캘린더·스케줄 페이지 공용) */
+/** 월 그리드 — 일요일 시작, 앞뒤 빈 칸은 null (홈 캘린더·스케줄 페이지 공용) */
 export function buildMonthGrid(y: number, m: number): (string | null)[][] {
-  const startDow = (new Date(y, m, 1).getDay() + 6) % 7;
+  const startDow = new Date(y, m, 1).getDay();
   const daysIn = new Date(y, m + 1, 0).getDate();
   const cells: (string | null)[] = [
     ...Array<null>(startDow).fill(null),
