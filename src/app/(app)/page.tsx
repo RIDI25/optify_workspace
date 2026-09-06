@@ -4,7 +4,9 @@ import { channelLabel } from "@/lib/channels";
 import { serviceLabel } from "@/lib/services";
 import { kstMonth, monthBoundsUtc, monthContentSummary, type PublishRow } from "@/lib/publish-stats";
 import { TrackerSummary } from "@/components/dashboard/tracker-summary";
-import { TodayView, type TodayClientSummary, type TodayEvent, type TodayRow } from "@/components/today/today-view";
+import { ClientsGlance, TodayMemo, type TodayClientSummary, type TodayRow } from "@/components/today/today-view";
+import { HomeCalendar, type CalInvoice, type CalPlan, type CalTask } from "@/components/today/home-calendar";
+import type { CalendarEvent } from "@/types/database";
 
 function kstToday(): string {
   return new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
@@ -37,10 +39,14 @@ export default async function TodayPage() {
   const today = kstToday();
   const ym = kstMonth(new Date().toISOString())!;
   const { startIso, endIso } = monthBoundsUtc(ym);
-  const weekEnd = addDays(today, 7);
   const contractHorizon = addDays(today, 30);
+  // 달력 범위: 지난달 1일 ~ 다다음달 말일 (홈 달력에서 앞뒤 달로 넘길 수 있게)
+  const [ty, tm] = today.split("-").map(Number);
+  const calStart = `${tm === 1 ? ty - 1 : ty}-${String(tm === 1 ? 12 : tm - 1).padStart(2, "0")}-01`;
+  const calEndDate = new Date(Date.UTC(ty, tm + 2, 0));
+  const calEnd = calEndDate.toISOString().slice(0, 10);
 
-  const [clientsRes, profilesRes, reviewRes, tasksRes, leadsRes, plansRes, invoicesRes, paymentsRes, servicesRes, eventsRes, monthContentsRes, upcomingPlansRes] =
+  const [clientsRes, profilesRes, reviewRes, tasksRes, leadsRes, plansRes, invoicesRes, paymentsRes, servicesRes, eventsRes, monthContentsRes, calPlansRes, calTasksRes, calInvoicesRes] =
     await Promise.all([
       supabase.from("clients").select("id, name, is_internal, status").order("is_internal", { ascending: false }).order("created_at"),
       supabase.from("profiles").select("id, name"),
@@ -65,18 +71,20 @@ export default async function TodayPage() {
       supabase.from("tax_invoices").select("id, counterparty, end_client_name, total_amount, issue_date").eq("status", "issued").order("issue_date"),
       supabase.from("invoice_payments").select("invoice_id, amount"),
       supabase.from("client_services").select("id, client_id, service_type, end_date").eq("status", "active").gte("end_date", today).lte("end_date", contractHorizon),
-      supabase.from("events").select("id, title, event_date, event_time, event_type, client_id").gte("event_date", today).lte("event_date", weekEnd).order("event_date").order("event_time"),
+      supabase.from("events").select("*").gte("event_date", calStart).lte("event_date", calEnd).order("event_date").order("event_time"),
       supabase
         .from("contents")
         .select("client_id, channel, wp_post_id, published_at, created_at, approval_status")
         .or(`and(created_at.gte.${startIso},created_at.lte.${endIso}),and(published_at.gte.${startIso},published_at.lte.${endIso})`),
       supabase
         .from("content_plans")
-        .select("id, client_id, title, channel, scheduled_date")
+        .select("id, client_id, title, channel, scheduled_date, status")
         .neq("status", "published")
-        .gt("scheduled_date", today)
-        .lte("scheduled_date", weekEnd)
+        .gte("scheduled_date", calStart)
+        .lte("scheduled_date", calEnd)
         .order("scheduled_date"),
+      supabase.from("tasks").select("id, title, due_date, assignee_id, client_id").neq("status", "done").gte("due_date", calStart).lte("due_date", calEnd),
+      supabase.from("tax_invoices").select("id, issue_date, counterparty").neq("status", "cancelled").gte("issue_date", calStart).lte("issue_date", calEnd),
     ]);
 
   type ClientLite = { id: string; name: string; is_internal: boolean; status: string };
@@ -203,25 +211,6 @@ export default async function TodayPage() {
   const toneRank: Record<string, number> = { bad: 0, warn: 1, info: 2, muted: 3 };
   rows.sort((a, b) => toneRank[a.tone] - toneRank[b.tone] || (a.due ?? "9999").localeCompare(b.due ?? "9999"));
 
-  const events: TodayEvent[] = [
-    ...((eventsRes.data ?? []) as { id: string; title: string; event_date: string; event_time: string | null; event_type: string; client_id: string | null }[]).map((e) => ({
-      key: `e-${e.id}`,
-      date: e.event_date,
-      time: e.event_time,
-      title: e.client_id ? `${clientName(e.client_id)} · ${e.title}` : e.title,
-      kind: e.event_type === "meeting" ? "미팅" : e.event_type === "deadline" ? "마감" : e.event_type === "publish" ? "발행" : "일정",
-    })),
-    ...((upcomingPlansRes.data ?? []) as { id: string; client_id: string; title: string; channel: string; scheduled_date: string }[]).map((p) => ({
-      key: `p-${p.id}`,
-      date: p.scheduled_date,
-      time: null,
-      title: `${clientName(p.client_id)} · ${p.title}`,
-      kind: `${channelLabel(p.channel)} 발행`,
-    })),
-  ]
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""))
-    .slice(0, 8);
-
   const monthContents = (monthContentsRes.data ?? []) as (PublishRow & { client_id: string; approval_status: string })[];
   const overdueByClient = new Map<string, number>();
   for (const r of rows) if (r.tone === "bad" && r.clientId) overdueByClient.set(r.clientId, (overdueByClient.get(r.clientId) ?? 0) + 1);
@@ -242,9 +231,25 @@ export default async function TodayPage() {
     });
 
   return (
-    <div className="space-y-6">
-      <TodayView rows={rows} events={events} clients={clientSummaries} me={{ id: profile.id, name: profile.name }} today={today} ym={ym} />
-      <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-6xl space-y-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+        <div className="lg:col-span-3">
+          <HomeCalendar
+            me={{ id: profile.id }}
+            initialEvents={(eventsRes.data ?? []) as CalendarEvent[]}
+            tasks={(calTasksRes.data ?? []) as CalTask[]}
+            invoices={(calInvoicesRes.data ?? []) as CalInvoice[]}
+            plans={(calPlansRes.data ?? []) as CalPlan[]}
+            clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+            profiles={profiles}
+          />
+        </div>
+        <div className="lg:col-span-2">
+          <TodayMemo rows={rows} me={{ id: profile.id, name: profile.name }} />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ClientsGlance clients={clientSummaries} ym={ym} />
         <TrackerSummary />
       </div>
     </div>
