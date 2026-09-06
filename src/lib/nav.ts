@@ -8,7 +8,7 @@
  * - 일정: 언제 무엇이 예정돼 있나 (/schedule, /tasks)
  * - 보조: 설정, 데일리 소식
  *
- * 콘텐츠(키워드·플랜·생성·라이브러리)·SEO·GEO·리포트는 고객사 카드의 탭이다 (CLIENT_TABS).
+ * 콘텐츠(키워드·플랜·생성·라이브러리)·SEO·GEO·서치콘솔·GA4 는 고객사 카드의 탭이다 (CLIENT_TABS).
  * 옛 주소(/plans 등)는 그대로 열리되 지금 고객사의 카드로 안내한다.
  * 2026-09-06 결정: 팀원 2명 모두 같은 권한 → ownerOnly 구분 없음.
  */
@@ -50,7 +50,7 @@ export const CLIENT_TABS: ClientTab[] = [
   { key: "content", label: "콘텐츠" },
   { key: "seo", label: "SEO", icon: "🔎" },
   { key: "geo", label: "GEO", icon: "✨" },
-  { key: "reports", label: "통합리포트", icon: "📊" },
+  { key: "reports", label: "서치콘솔 · GA4", icon: "📊" },
   { key: "info", label: "기본정보" },
 ];
 

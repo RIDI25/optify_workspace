@@ -15,8 +15,7 @@
 ## 기술 스택
 Next.js 16 (App Router, ⚠️ AGENTS.md 참고: 학습 데이터와 다른 breaking change 있음) · TypeScript ·
 Tailwind v4 (CSS `@theme` 토큰, `tailwind.config` 파일 없음) · Supabase(Auth/DB/Storage/RLS) ·
-Anthropic(콘텐츠) · Gemini(이미지) · Google Ads/GSC/GA4 · `@react-pdf/renderer`(Puppeteer 금지) ·
-`docx`(생성 로직은 `lib/export/docx-builder.ts`로 분리, 재사용 예정).
+Anthropic(콘텐츠) · Gemini(이미지) · Google Ads/GSC/GA4 · `@react-pdf/renderer`(Puppeteer 금지) · `docx`(견적·계약 문서).
 
 ## 디자인 토큰 (globals.css `@theme`)
 옵티파이 트래커와 같은 화이트+블루(2026-09-06 전환). 악센트 블루 `--color-accent #2563EB`(버튼·포인트 전용, 넓은 면적 금지) ·
@@ -59,6 +58,12 @@ AI 비서(우하단 위젯 → `/api/assistant`, Claude Opus 5 tool-use 루프, 
 고객사 카드: `ClientShell` 이 주소의 고객사를 선택 고객사로 맞춘 뒤 기존 화면(플랜·생성·라이브러리·키워드·트래커·리포트)을 탭 안에 그대로 넣는다. 기본정보 탭 = 옛 설정의 고객사 항목(`components/clients/client-info-sections.tsx` 로 분리) + 메모 자동 저장.
 옛 주소(/plans /generate /library /keywords /reports /tracking)는 `LegacyRedirect` 가 지금 고객사 카드 탭으로 보낸다(쿼리 유지) — 링크를 고칠 필요 없음.
 **결정(2026-09-06)**: 팀원 2명 모두 같은 권한(둘 다 owner, 0027 에서 갱신) → ownerOnly·readOnly 구분은 코드에 남아 있어도 UI 에서 쓰지 않는다. 콘텐츠 표시 상태는 다섯 개(기획 중·검수 필요·수정 필요·발행 준비·발행 완료, 2차에서 작업 목록으로).
+홈(/)은 캘린더 우선: `components/today/home-calendar.tsx`(날짜 눌러 바로 일정 추가·삭제, 업무 마감·계산서·발행 예정 겹침) + 옆의 작은 메모 `TodayMemo`(누르면 세부·행동 버튼) + 고객사 한눈에 + 트래커 요약.
+개편 2차(2026-09-06): 고객사 › 콘텐츠 기본 보기 = `components/clients/content-work-list.tsx` (다섯 상태를 플랜·승인·발행 값으로 계산 — `buildWorkItems`, 다음 행동 `nextAction`);
+기본정보 › 콘텐츠 기준 `client-brief.tsx` → `client_briefs`(0028) → `lib/generation/brand-rules.ts briefBlock` 으로 생성 프롬프트 주입; 회사 정보 칸(0028 컬럼이 있을 때만 표시·저장);
+계약 항목명 자유 입력(`settings/client-services.tsx`, 추천 목록은 datalist) + 청구 방식 + 월 약정(`client_services.monthly_quota`) → 목록·개요 '약정 n건 중 발행 m건';
+정산 입금 상태는 입금 합계로 계산해 표시.
+**리포트 축소(2026-09-06 결정)**: 고객사 탭 '서치콘솔 · GA4'(`components/reports/google-report-view.tsx`, 주소 /clients/[id]/reports) = 구글 서치콘솔·GA4 결과만 불러와 KPI·차트·기회 키워드·월별 추이로 정리. 네이버 수치 입력·스크린샷 분석·AI 소견·PDF/docx 내보내기·확정은 제거(관련 API·export 모듈 삭제). `reports` 표는 월별 스냅샷(gsc_snapshot·ga4_snapshot) 저장용으로만 쓴다.
 코덱스 검토 반영(2026-09-06, 0026_hardening.sql + 코드): ① 고객사를 바꾸면 생성·라이브러리·리포트 화면을 새로 그린다(고객사 카드는 id 로 키), WP 초안 전송·생성 API 는 서버가 글·플랜의 소속 고객사·채널을 확인.
 ② member 의 role 변경은 DB 트리거로 차단, profiles·clients·channel_settings·api_usage_logs·daily_reports 읽기도 팀원(`is_team_member()`)만, 채널 비밀번호 조회는 프로필 있는 계정만.
 ③ 저장된 HTML 은 DOMPurify(`lib/sanitize.ts`)로 정화해서만 그리고 서버 렌더에서는 그리지 않는다. `lib/text.ts` 는 속성값 이스케이프 + http(s)·상대 경로만 허용.
@@ -71,7 +76,7 @@ AI 비서(우하단 위젯 → `/api/assistant`, Claude Opus 5 tool-use 루프, 
 ⑩ 트래커 화면은 최근 12주만, 1,000행 단위로 나눠 읽고 조회 오류를 '데이터 없음'과 구분(`lib/tracker.ts` fetchAllRows).
 ⑪ SSRF: `lib/url-guard.ts` 가 IPv6 매핑·DNS 결과·리다이렉트 단계까지 검사(`isSafePublicUrlResolved`, `safeFetch` — WP 호출도 사용). 이미지 생성·비서 API 는 프로필 있는 계정만.
 검증: `npm test`(vitest — text·publish-stats·url-guard), `npm run lint`, `npx tsc --noEmit`, `npm run build` 모두 통과가 커밋 조건.
-DB: `supabase/migrations/0001~0027`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries, 0025=tracker_* 트래커 연동, 0026=보안·정합성 강화, 0027=승인 트리거 보완 + 권한 통일). **0002 는 재실행 금지**(정책 전부 삭제).
+DB: `supabase/migrations/0001~0028`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries, 0025=tracker_* 트래커 연동, 0026=보안·정합성 강화, 0027=승인 트리거 보완 + 권한 통일, 0028=회사 정보·월 약정·client_briefs). **0002 는 재실행 금지**(정책 전부 삭제).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)

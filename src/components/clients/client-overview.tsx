@@ -227,15 +227,15 @@ export function ClientOverview({ id }: { id: string }) {
           )}
         </Section>
 
-        <Section title="리포트" right={<Link href={clientPath(id, "reports")} className="text-xs text-accent-deep hover:underline">통합리포트 →</Link>}>
+        <Section title="서치콘솔 · GA4" right={<Link href={clientPath(id, "reports")} className="text-xs text-accent-deep hover:underline">자료 보기 →</Link>}>
           {loaded.reports.length === 0 ? (
-            <p className="text-sm text-muted">아직 만든 리포트가 없습니다.</p>
+            <p className="text-sm text-muted">아직 불러온 달이 없습니다.</p>
           ) : (
             <ul className="text-sm">
               {loaded.reports.map((r) => (
                 <li key={r.year_month} className="flex justify-between">
                   <span className="text-ink">{r.year_month}</span>
-                  <span className={r.status === "final" ? "text-emerald-700" : "text-muted"}>{r.status === "final" ? "확정" : "초안"}</span>
+                  <span className="text-muted">저장됨</span>
                 </li>
               ))}
             </ul>
