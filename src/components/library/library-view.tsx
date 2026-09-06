@@ -77,7 +77,7 @@ export function LibraryView() {
   );
 
   if (!selectedClientId) {
-    return <p className="text-sm text-muted">상단에서 클라이언트를 선택하세요.</p>;
+    return <p className="text-sm text-muted">왼쪽 메뉴에서 고객사를 선택하세요.</p>;
   }
 
   return (

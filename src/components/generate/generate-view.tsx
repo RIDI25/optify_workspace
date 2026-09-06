@@ -135,7 +135,7 @@ export function GenerateView() {
   if (!selectedClientId) {
     return (
       <p className="text-sm text-muted">
-        상단에서 클라이언트를 선택하세요. (시드/마이그레이션 실행 필요)
+        왼쪽 메뉴에서 고객사를 선택하세요. (시드/마이그레이션 실행 필요)
       </p>
     );
   }
