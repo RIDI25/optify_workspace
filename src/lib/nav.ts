@@ -19,6 +19,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/generate", label: "콘텐츠 생성", step: 3 },
   { href: "/library", label: "라이브러리", step: 4 },
   { href: "/reports", label: "리포트", step: 5 },
+  { href: "/tracking", label: "AI 노출·검색 순위", section: "성과 추적" }, // 옵티파이 트래커(맥) 측정 결과
   { href: "/tasks", label: "업무", section: "팀 운영" },
   { href: "/schedule", label: "스케줄", section: "팀 운영" },
   { href: "/sales", label: "영업·리드", section: "영업" }, // member는 조회만 (RLS 0023)

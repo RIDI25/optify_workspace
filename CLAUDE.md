@@ -19,8 +19,10 @@ Anthropic(콘텐츠) · Gemini(이미지) · Google Ads/GSC/GA4 · `@react-pdf/r
 `docx`(생성 로직은 `lib/export/docx-builder.ts`로 분리, 재사용 예정).
 
 ## 디자인 토큰 (globals.css `@theme`)
-악센트 네온 그린 `--color-accent #00E87B`(버튼·포인트 전용, 넓은 면적 금지) · 보조 딥그린
-`--color-accent-deep #057A4E` · 틴트 `--color-tint #EAFBF2` · 잉크 `--color-ink #1A2421`. 화이트 모드 고정.
+옵티파이 트래커와 같은 화이트+블루(2026-09-06 전환). 악센트 블루 `--color-accent #2563EB`(버튼·포인트 전용, 넓은 면적 금지) ·
+보조 딥블루 `--color-accent-deep #1D4ED8` · 틴트 `--color-tint #EFF6FF` · 잉크 `--color-ink #111827` · 옅은 배경 `--color-subtle #F4F6FA`.
+화이트 모드 고정. 화면 컴포넌트에 색을 직접 박지 말고 토큰 클래스(`bg-accent`, `text-accent-deep`, `bg-tint`)를 쓴다.
+PDF 문서(`lib/export/*-pdf.tsx`)·카드뉴스·브랜드 설명(`lib/generation/business-context.ts`)의 네온 그린은 옵티파이 브랜드 자산이라 그대로 둔다.
 
 ## 보안 불변 규칙
 - `.env*`·서비스계정 JSON 절대 커밋 금지(`.gitignore`에 반영됨).
@@ -48,7 +50,11 @@ AI 비서(우하단 위젯 → `/api/assistant`, Claude Opus 5 tool-use 루프, 
 /sales·/revenue는 member도 조회 가능(0023 — select 팀, 쓰기 owner. 페이지는 readOnly 모드로 편집 UI 숨김).
 /ledger 회계 장부(팀 공용 기입, 레지스트리 `lib/ledger.ts`): 입금·지출·카드 내역 수기 기입 + 세금계산서
 입금(invoice_payments) 자동 병합 표시(이중 기입 방지) + 월 단위 세무 전달용 CSV(UTF-8 BOM) 내보내기.
-DB: `supabase/migrations/0001~0023`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries).
+옵티파이 트래커 연동 A단계(2026-09-06, 읽기 전용): 맥의 `~/optify-tracker`(GEO·SEO 측정기)가 실행·리포트 뒤 `tracker sync`로
+결과를 Supabase 에 올린다(`tracker_*` 테이블 7개 + `tracker_jobs` 대기열 + Storage `tracker` 버킷, `clients.tracker_slug` 로 연결).
+/tracking 화면(개요·추세·결과 보기, `components/tracking/`, 라벨·계산은 `lib/tracker.ts`) + 대시보드 위젯(`components/dashboard/tracker-summary.tsx`).
+'지금 실행'·고객사 등록 마법사(B단계)와 콘텐츠 발행→조치 기록·키워드→질문·리포트 섹션·AI 비서 도구(C단계)는 아직 맥 앱에 있다.
+DB: `supabase/migrations/0001~0025`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries, 0025=tracker_* 트래커 연동).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)

@@ -33,7 +33,7 @@ const STATUS_LABELS: Record<TaxInvoiceStatus, string> = {
 };
 
 /** 적층 차트 시리즈 색 (거래처 상위 4 + 기타) */
-const STACK_COLORS = ["#057A4E", "#2a78d6", "#b9770e", "#8e44ad", "#9aa5a0"];
+const STACK_COLORS = ["#1D4ED8", "#0D9488", "#b9770e", "#8e44ad", "#9aa5a0"];
 
 function localDate(): string {
   const d = new Date();

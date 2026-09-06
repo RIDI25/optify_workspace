@@ -226,7 +226,7 @@ export function BulkKeywordView() {
                   <YAxis fontSize={11} />
                   <Tooltip formatter={(v) => Number(v).toLocaleString("ko-KR")} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="네이버" fill="#057A4E" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="네이버" fill="#1D4ED8" radius={[3, 3, 0, 0]} />
                   <Bar dataKey="구글" fill="#2a78d6" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

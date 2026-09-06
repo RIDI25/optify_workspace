@@ -261,11 +261,11 @@ export function PlanTools({ onCreated }: { onCreated: () => void }) {
             </label>
             <div className="space-y-1.5 pt-4 text-xs text-ink">
               <label className="flex items-center gap-1.5">
-                <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} className="accent-[#057A4E]" />
+                <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} className="accent-[#1D4ED8]" />
                 AI 제목 생성
               </label>
               <label className="flex items-center gap-1.5">
-                <input type="checkbox" checked={skipWeekends} onChange={(e) => setSkipWeekends(e.target.checked)} className="accent-[#057A4E]" />
+                <input type="checkbox" checked={skipWeekends} onChange={(e) => setSkipWeekends(e.target.checked)} className="accent-[#1D4ED8]" />
                 주말 제외
               </label>
             </div>

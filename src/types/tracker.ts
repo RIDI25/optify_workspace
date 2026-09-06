@@ -1,0 +1,157 @@
+/**
+ * 옵티파이 트래커 연동 타입 (supabase/migrations/0025_tracker.sql 과 수동 동기화).
+ * 맥에서 도는 트래커가 올리는 측정 결과. 워크스페이스는 읽기만 한다 (A단계).
+ */
+
+export interface TrackerClient {
+  client_id: string;
+  slug: string;
+  name: string;
+  active: boolean;
+  readiness: string[];
+  enabled_surfaces: string[];
+  prompts_active: number;
+  keywords_active: number;
+  competitors: string[];
+  brand_aliases: string[];
+  synced_at: string;
+}
+
+export interface TrackerPrompt {
+  client_id: string;
+  prompt_id: string;
+  intent: string | null;
+  text_search: string | null;
+  text_chat: string | null;
+  active: boolean;
+  added: string | null;
+  retired: string | null;
+}
+
+export interface TrackerRun {
+  run_id: string;
+  client_id: string;
+  week: string;
+  started_at: string | null;
+  finished_at: string | null;
+  status: string;
+  surfaces: string[];
+  reps: Record<string, number> | null;
+  conditions: Record<string, unknown>;
+  break_flag: string | null;
+  break_note: string | null;
+  observations: number;
+  present: number;
+  errors: number;
+  synced_at: string;
+}
+
+export interface TrackerCitation {
+  rank: number | null;
+  url: string | null;
+  domain: string | null;
+  title: string | null;
+  publisher: string | null;
+  source_type: string | null;
+  inline_count: number | null;
+}
+
+export interface TrackerMention {
+  entity_type: "brand" | "competitor" | string;
+  entity: string;
+  in_answer: boolean;
+  matched_alias: string | null;
+  first_pos: number | null;
+  mention_order: number | null;
+  in_citation: boolean;
+  citation_ranks: number[];
+}
+
+export interface TrackerEntity {
+  name_raw: string;
+  name_norm: string;
+  matched_to: string | null;
+  source: "answer" | "publisher" | string;
+}
+
+export interface TrackerObservation {
+  obs_id: string;
+  client_id: string;
+  run_id: string;
+  week: string;
+  prompt_id: string;
+  prompt_variant: string | null;
+  prompt_text: string | null;
+  intent: string | null;
+  surface: string;
+  rep: number;
+  collected_at: string | null;
+  present: boolean;
+  refused: boolean;
+  answer_text: string | null;
+  answer_length: number;
+  model_id: string | null;
+  device: string | null;
+  screenshot_path: string | null;
+  error: string | null;
+  conditions: Record<string, unknown>;
+  citations: TrackerCitation[];
+  mentions: TrackerMention[];
+  entities: TrackerEntity[];
+}
+
+export interface TrackerRankItem {
+  position: number | null;
+  section: string | null;
+  section_rank: number | null;
+  url: string | null;
+  domain: string | null;
+  title: string | null;
+  owned: boolean;
+}
+
+export interface TrackerRankObservation {
+  obs_id: string;
+  client_id: string;
+  run_id: string;
+  week: string;
+  keyword_id: string;
+  keyword_text: string | null;
+  intent: string | null;
+  target_url: string | null;
+  surface: string;
+  rep: number;
+  collected_at: string | null;
+  present: boolean;
+  items_count: number;
+  best_position: number | null;
+  best_section: string | null;
+  best_section_rank: number | null;
+  best_matched_by: string | null;
+  sections: Record<string, unknown>;
+  items: TrackerRankItem[];
+  screenshot_path: string | null;
+  error: string | null;
+  conditions: Record<string, unknown>;
+}
+
+export interface TrackerWeeklyMetric {
+  client_id: string;
+  week: string;
+  surface: string;
+  intent: string;
+  metric: string;
+  value: number | null;
+  numerator: number | null;
+  denominator: number | null;
+  computed_at: string | null;
+}
+
+export interface TrackerReport {
+  client_id: string;
+  month: string;
+  pdf_path: string | null;
+  html_path: string | null;
+  generated_at: string | null;
+  synced_at: string;
+}

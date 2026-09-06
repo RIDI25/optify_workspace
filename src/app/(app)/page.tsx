@@ -7,6 +7,7 @@ import { autoDoneKeys } from "@/lib/onboarding";
 import { daysUntilEnd, getService, serviceLabel } from "@/lib/services";
 import { taskStatusLabel } from "@/lib/tasks";
 import { HomeSchedule } from "@/components/dashboard/home-schedule";
+import { TrackerSummary } from "@/components/dashboard/tracker-summary";
 import type {
   CalendarEvent,
   Client,
@@ -243,6 +244,9 @@ export default async function DashboardPage() {
         }
         profiles={teamProfiles}
       />
+
+      {/* 트래커: 모든 고객사의 AI 노출·검색 순위 최근 실행 (0025) */}
+      <TrackerSummary />
 
       {/* 콘텐츠 워크플로우 한눈에 */}
       <section className="rounded-xl border border-border bg-surface p-4">

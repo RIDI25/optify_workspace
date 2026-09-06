@@ -578,7 +578,7 @@ export function QuoteForm({
                 type="radio"
                 checked={vatMode === "excluded"}
                 onChange={() => setVatMode("excluded")}
-                className="accent-[#057A4E]"
+                className="accent-[#1D4ED8]"
               />
               별도 (입력 단가에 10% 가산)
             </label>
@@ -587,7 +587,7 @@ export function QuoteForm({
                 type="radio"
                 checked={vatMode === "included"}
                 onChange={() => setVatMode("included")}
-                className="accent-[#057A4E]"
+                className="accent-[#1D4ED8]"
               />
               포함 (입력 단가에서 역산)
             </label>

@@ -162,8 +162,8 @@ export function PlansView() {
           title: p.title,
           start: p.scheduled_date!,
           allDay: true,
-          backgroundColor: getChannel(p.channel)?.color ?? "#057A4E",
-          borderColor: getChannel(p.channel)?.color ?? "#057A4E",
+          backgroundColor: getChannel(p.channel)?.color ?? "#1D4ED8",
+          borderColor: getChannel(p.channel)?.color ?? "#1D4ED8",
           extendedProps: {
             approval: contentsByPlan[p.id]?.[0]?.approval_status ?? null,
             published: p.status === "published",
@@ -832,7 +832,7 @@ function DayPanel({
               <span
                 className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white"
                 style={{
-                  backgroundColor: getChannel(p.channel)?.color ?? "#057A4E",
+                  backgroundColor: getChannel(p.channel)?.color ?? "#1D4ED8",
                 }}
               >
                 {channelLabel(p.channel)}

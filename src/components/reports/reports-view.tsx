@@ -565,7 +565,7 @@ export function ReportsView() {
                 <XAxis dataKey="month" fontSize={11} />
                 <YAxis fontSize={11} />
                 <Tooltip />
-                <Line type="monotone" dataKey="views" name="조회수" stroke="#057A4E" strokeWidth={2} />
+                <Line type="monotone" dataKey="views" name="조회수" stroke="#1D4ED8" strokeWidth={2} />
                 <Line type="monotone" dataKey="visitors" name="방문자" stroke="#2a78d6" strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>

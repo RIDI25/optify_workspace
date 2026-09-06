@@ -17,8 +17,8 @@ import type { NaverKeywordIdea } from "@/lib/naver-ads";
 import type { KeywordIdea } from "@/lib/google-ads";
 
 // 검증된 팔레트 (CVD ΔE 72) — 네이버=브랜드 딥그린, 구글=블루
-const C_NAVER = "#057A4E";
-const C_GOOGLE = "#2a78d6";
+const C_NAVER = "#1D4ED8";
+const C_GOOGLE = "#0D9488";
 
 function fmt(n: number | null | undefined): string {
   return n != null ? n.toLocaleString() : "-";
@@ -51,14 +51,14 @@ function satGrade(ratio: number): { label: string; emoji: string; cls: string } 
   if (ratio < 0.3)
     return { label: "황금", emoji: "💎", cls: "bg-sky-50 text-sky-700" };
   if (ratio < 2)
-    return { label: "좋음", emoji: "🟢", cls: "bg-emerald-50 text-emerald-700" };
+    return { label: "좋음", emoji: "🟢", cls: "bg-blue-50 text-blue-700" };
   if (ratio < 10)
     return { label: "보통", emoji: "🟡", cls: "bg-amber-50 text-amber-700" };
   return { label: "포화", emoji: "🔴", cls: "bg-red-50 text-red-600" };
 }
 
 function compChipCls(label: string): string {
-  if (label === "낮음") return "bg-emerald-50 text-emerald-700";
+  if (label === "낮음") return "bg-blue-50 text-blue-700";
   if (label === "보통") return "bg-amber-50 text-amber-700";
   if (label === "높음") return "bg-red-50 text-red-600";
   return "bg-subtle text-muted";

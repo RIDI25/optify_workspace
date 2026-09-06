@@ -144,7 +144,7 @@ export function PaymentsSection({
               type="checkbox"
               checked={showAll}
               onChange={(e) => setShowAll(e.target.checked)}
-              className="accent-[#057A4E]"
+              className="accent-[#1D4ED8]"
             />
             완납 건도 표시
           </label>

@@ -14,6 +14,7 @@ const CONTENT_ROUTES = [
   "/generate",
   "/library",
   "/reports",
+  "/tracking",
 ];
 
 export function ClientTabs() {

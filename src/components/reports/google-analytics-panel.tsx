@@ -15,8 +15,8 @@ import {
 } from "recharts";
 
 // 검증된 팔레트 (CVD ΔE 72) — GSC=브랜드 딥그린, GA4=블루
-const C_GSC = "#057A4E";
-const C_GA4 = "#2a78d6";
+const C_GSC = "#1D4ED8";
+const C_GA4 = "#0D9488";
 const C_GRID = "#e4e9e7";
 const C_AXIS = "#9aa5a0";
 

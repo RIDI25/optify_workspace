@@ -211,7 +211,7 @@ export function SalesView({ readOnly = false }: { readOnly?: boolean }) {
               <XAxis dataKey="month" fontSize={11} />
               <YAxis fontSize={11} />
               <Tooltip formatter={(v) => [`${Number(v).toLocaleString("ko-KR")}만원`, "수주액"]} />
-              <Bar dataKey="수주액" fill="#057A4E" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="수주액" fill="#1D4ED8" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
