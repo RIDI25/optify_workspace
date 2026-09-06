@@ -71,7 +71,10 @@ export function LedgerView({ meId }: { meId: string }) {
   const [month, setMonth] = useState(thisMonth());
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [invoiceRows, setInvoiceRows] = useState<Row[]>([]);
-  const [loading, setLoading] = useState(true);
+  // 로딩 여부는 '요청 키(월 + 재조회 횟수)'와 '마지막으로 불러온 키'를 비교해 렌더 중 계산한다.
+  // (effect 안에서 setLoading(true) 를 동기 호출하지 않는 keyed state — 저장 뒤 재조회는 reloadTick 을 올린다)
+  const [reloadTick, setReloadTick] = useState(0);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -91,10 +94,12 @@ export function LedgerView({ meId }: { meId: string }) {
   const monthStart = `${month}-01`;
   const [y, m] = month.split("-").map(Number);
   const monthEnd = `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+  const loadKey = `${month}#${reloadTick}`;
+  const loading = loadedKey !== loadKey;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [entRes, payRes] = await Promise.all([
+  // 상태 반영은 .then 콜백 안에서 한다 — effect 가 load() 를 직접 불러도 동기 setState 가 되지 않게.
+  const load = useCallback(() => {
+    return Promise.all([
       supabase
         .from("ledger_entries")
         .select("*")
@@ -106,48 +111,49 @@ export function LedgerView({ meId }: { meId: string }) {
         .select("id, invoice_id, paid_date, amount, memo")
         .gte("paid_date", monthStart)
         .lte("paid_date", monthEnd),
-    ]);
-    setEntries((entRes.data ?? []) as LedgerEntry[]);
+    ]).then(async ([entRes, payRes]) => {
+      setEntries((entRes.data ?? []) as LedgerEntry[]);
 
-    // 세금계산서 입금 → 거래처명 붙여서 자동 입금 행으로
-    const pays = (payRes.data ?? []) as {
-      id: string;
-      invoice_id: string;
-      paid_date: string;
-      amount: number;
-      memo: string | null;
-    }[];
-    const invIds = [...new Set(pays.map((p) => p.invoice_id))];
-    let counterpartyOf = new Map<string, string>();
-    if (invIds.length) {
-      const { data: invs } = await supabase
-        .from("tax_invoices")
-        .select("id, counterparty")
-        .in("id", invIds);
-      counterpartyOf = new Map(
-        ((invs ?? []) as { id: string; counterparty: string }[]).map((i) => [
-          i.id,
-          i.counterparty,
-        ]),
+      // 세금계산서 입금 → 거래처명 붙여서 자동 입금 행으로
+      const pays = (payRes.data ?? []) as {
+        id: string;
+        invoice_id: string;
+        paid_date: string;
+        amount: number;
+        memo: string | null;
+      }[];
+      const invIds = [...new Set(pays.map((p) => p.invoice_id))];
+      let counterpartyOf = new Map<string, string>();
+      if (invIds.length) {
+        const { data: invs } = await supabase
+          .from("tax_invoices")
+          .select("id, counterparty")
+          .in("id", invIds);
+        counterpartyOf = new Map(
+          ((invs ?? []) as { id: string; counterparty: string }[]).map((i) => [
+            i.id,
+            i.counterparty,
+          ]),
+        );
+      }
+      setInvoiceRows(
+        pays.map((p) => ({
+          key: `inv-${p.id}`,
+          date: p.paid_date,
+          entry_type: "income",
+          payment_method: "transfer",
+          amount: Number(p.amount),
+          counterparty: counterpartyOf.get(p.invoice_id) ?? "-",
+          description: "세금계산서 입금",
+          category: "sales_income",
+          memo: p.memo ?? "",
+          source: "invoice" as const,
+        })),
       );
-    }
-    setInvoiceRows(
-      pays.map((p) => ({
-        key: `inv-${p.id}`,
-        date: p.paid_date,
-        entry_type: "income",
-        payment_method: "transfer",
-        amount: Number(p.amount),
-        counterparty: counterpartyOf.get(p.invoice_id) ?? "-",
-        description: "세금계산서 입금",
-        category: "sales_income",
-        memo: p.memo ?? "",
-        source: "invoice" as const,
-      })),
-    );
-    setLoading(false);
+      setLoadedKey(loadKey);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
+  }, [loadKey]);
 
   useEffect(() => {
     load();
@@ -223,7 +229,7 @@ export function LedgerView({ meId }: { meId: string }) {
     }
     setDraft({ ...emptyDraft, entry_date: draft.entry_date, entry_type: draft.entry_type });
     setEditingId(null);
-    await load();
+    setReloadTick((t) => t + 1); // 재조회 (로딩 표시 포함)
   }
 
   function startEdit(e: LedgerEntry) {

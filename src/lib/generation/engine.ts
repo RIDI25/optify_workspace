@@ -1,4 +1,4 @@
-import { brandRulesBlock } from "@/lib/generation/brand-rules";
+import { brandRulesBlock, writerPersonaLine } from "@/lib/generation/brand-rules";
 import { businessContextBlock } from "@/lib/generation/business-context";
 import { KOREAN_STYLE_BLOCK, channelDivergenceBlock } from "@/lib/generation/korean-style";
 import { HARVARD_5_BLOCK, usesHarvardStructure } from "@/lib/generation/writing-structure";
@@ -13,8 +13,12 @@ export interface GenerateInput {
   extraInstructions?: string;
   /** 옵티파이(is_internal) 클라이언트일 때만 사업 컨텍스트를 주입 */
   isInternalClient?: boolean;
-  /** 네이버 블로그 카테고리 key. 'auto'면 모델이 선택해 마커로 알린다 */
+  /** 네이버 블로그 카테고리 key ('auto' 가능). 옵티파이 자체 블로그 체계 — 내부 고객사에만 쓴다 */
   naverCategory?: string | null;
+  /** 외부 고객사 이름 — 글의 화자 (코덱스 09) */
+  clientName?: string | null;
+  /** 외부 고객사 채널 설정의 블로그 카테고리 (channel_settings.category) */
+  blogCategory?: string | null;
 }
 
 /** preset의 키를 한글 라벨로 매핑 (표시/프롬프트용) */
@@ -73,12 +77,11 @@ function renderContentTypeTemplate(
 }
 
 export function buildSystemPrompt(input: GenerateInput): string {
-  const parts: string[] = [brandRulesBlock()];
+  const brand = { internal: !!input.isInternalClient, clientName: input.clientName };
+  const parts: string[] = [brandRulesBlock(brand)];
   if (input.isInternalClient) parts.push(businessContextBlock());
 
-  parts.push(
-    "당신은 옵티파이(검색 마케팅 회사)의 콘텐츠 작가입니다. 아래 채널 프리셋을 철저히 준수해 글을 작성하세요.",
-  );
+  parts.push(writerPersonaLine(brand));
   parts.push(`[채널]\n  ${input.channel}`);
   parts.push(renderPreset(input.preset));
 
@@ -105,7 +108,13 @@ export function buildSystemPrompt(input: GenerateInput): string {
   if (divergence) parts.push(divergence);
 
   if (input.channel === "naver_blog") {
-    parts.push(naverCategoryPromptBlock(input.naverCategory));
+    if (input.isInternalClient) {
+      parts.push(naverCategoryPromptBlock(input.naverCategory)); // 옵티파이 블로그 카테고리 체계
+    } else if (input.blogCategory?.trim()) {
+      parts.push(
+        `[블로그 카테고리]\n이 글은 '${input.blogCategory.trim()}' 카테고리에 발행됩니다. 그 카테고리의 성격에 맞는 각도로 작성하세요.`,
+      );
+    }
     parts.push(
       [
         "[네이버 마무리 규칙]",
@@ -154,11 +163,13 @@ export function buildWordpressJsonPrompt(input: {
   extraInstructions?: string;
   imageCount: number;
   isInternalClient?: boolean;
+  clientName?: string | null;
 }): { system: string; user: string } {
+  const brand = { internal: !!input.isInternalClient, clientName: input.clientName };
   const system = [
-    brandRulesBlock(),
+    brandRulesBlock(brand),
     input.isInternalClient ? businessContextBlock() : "",
-    "당신은 옵티파이(검색 마케팅 회사)의 워드프레스 SEO 블로그 작가입니다. 아래 채널 프리셋을 철저히 준수하세요.",
+    writerPersonaLine(brand, "워드프레스 SEO 블로그 작가"),
     renderPreset(input.preset),
     HARVARD_5_BLOCK,
     KOREAN_STYLE_BLOCK,

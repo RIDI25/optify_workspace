@@ -37,18 +37,20 @@ export function SalesView({ readOnly = false }: { readOnly?: boolean }) {
   const [targetInput, setTargetInput] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const reload = useCallback(async () => {
+  // 상태 반영은 .then 콜백 안에서 한다 — effect 가 reload() 를 직접 불러도 동기 setState 가 되지 않게.
+  const reload = useCallback(() => {
     const supabase = createClient();
-    const [leadsRes, quotesRes, settingRes] = await Promise.all([
+    return Promise.all([
       supabase.from("leads").select("*").order("created_at", { ascending: false }),
       supabase.from("quotes").select("*").order("created_at", { ascending: false }),
       supabase.from("app_settings").select("value").eq("key", TARGET_KEY).maybeSingle(),
-    ]);
-    setLeads((leadsRes.data ?? []) as Lead[]);
-    setQuotes((quotesRes.data ?? []) as Quote[]);
-    const t = Number(settingRes.data?.value);
-    if (t > 0) setTarget(t);
-    setLoading(false);
+    ]).then(([leadsRes, quotesRes, settingRes]) => {
+      setLeads((leadsRes.data ?? []) as Lead[]);
+      setQuotes((quotesRes.data ?? []) as Quote[]);
+      const t = Number(settingRes.data?.value);
+      if (t > 0) setTarget(t);
+      setLoading(false);
+    });
   }, []);
 
   useEffect(() => {

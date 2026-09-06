@@ -22,11 +22,14 @@ import {
   RANK_METRICS,
   RANK_SURFACES,
   SUMMARY_METRICS,
+  TREND_WEEKS,
   deltaPoints,
+  fetchAllRows,
   findMetric,
   fmtRatio,
   formatValue,
   intentLabel,
+  latestWeeks,
   metricLabel,
   pct,
   surfaceLabel,
@@ -46,6 +49,36 @@ type RankLite = Pick<
   TrackerRankObservation,
   "keyword_id" | "keyword_text" | "intent" | "surface" | "best_position" | "best_section" | "best_section_rank" | "error" | "week"
 >;
+type WeeklyState = { rows: TrackerWeeklyMetric[]; error: string | null };
+
+/**
+ * 최근 실행의 주 → 최신 TREND_WEEKS 주 → 그 주들의 집계만 페이지로 모은다.
+ * 전체를 한 번에 select 하면 max-rows 에 잘려 최신 주가 조용히 빠진다 (주당 수백 행).
+ */
+async function loadWeekly(clientId: string): Promise<WeeklyState> {
+  const supabase = createClient();
+  const runs = await supabase
+    .from("tracker_runs")
+    .select("week")
+    .eq("client_id", clientId)
+    .order("started_at", { ascending: false })
+    .limit(200);
+  if (runs.error) return { rows: [], error: runs.error.message };
+  const weeks = latestWeeks((runs.data ?? []).map((r) => String(r.week)));
+  if (weeks.length === 0) return { rows: [], error: null };
+  return fetchAllRows<TrackerWeeklyMetric>((from, to) =>
+    supabase
+      .from("tracker_weekly_metrics")
+      .select("*")
+      .eq("client_id", clientId)
+      .in("week", weeks)
+      .order("week")
+      .order("surface")
+      .order("intent")
+      .order("metric")
+      .range(from, to),
+  );
+}
 
 /** 추세: 검색 순위 요약 → AI 노출 지표(표면·의도 선택) → 주간 추이 → 경쟁사·인용 도메인·미등록 업체 */
 export function TrendTab({
@@ -59,29 +92,24 @@ export function TrendTab({
   scope: "geo" | "seo";
 }) {
   // weekly 가 null 이면 아직 불러오는 중 (고객사가 바뀌면 부모가 key 로 다시 그린다)
-  const [weekly, setWeekly] = useState<TrackerWeeklyMetric[] | null>(null);
+  const [weekly, setWeekly] = useState<WeeklyState | null>(null);
   const [surface, setSurface] = useState("");
   const [intent, setIntent] = useState("all");
-  const [obsState, setObsState] = useState<{ week: string; rows: ObsLite[] }>({ week: "", rows: [] });
-  const [rankState, setRankState] = useState<{ key: string; rows: RankLite[] }>({ key: "", rows: [] });
+  const [obsState, setObsState] = useState<{ week: string; rows: ObsLite[]; error: string | null }>({ week: "", rows: [], error: null });
+  const [rankState, setRankState] = useState<{ key: string; rows: RankLite[]; error: string | null }>({ key: "", rows: [], error: null });
   const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     let active = true;
-    createClient()
-      .from("tracker_weekly_metrics")
-      .select("*")
-      .eq("client_id", clientId)
-      .order("week")
-      .then(({ data }) => {
-        if (active) setWeekly((data ?? []) as TrackerWeeklyMetric[]);
-      });
+    loadWeekly(clientId).then((next) => {
+      if (active) setWeekly(next);
+    });
     return () => {
       active = false;
     };
   }, [clientId]);
 
-  const rows = useMemo(() => weekly ?? [], [weekly]);
+  const rows = useMemo(() => weekly?.rows ?? [], [weekly]);
   const geo = useMemo(() => rows.filter((r) => !RANK_SURFACES.has(r.surface)), [rows]);
   const rank = useMemo(() => rows.filter((r) => RANK_SURFACES.has(r.surface)), [rows]);
   const surfaces = useMemo(() => uniqueSorted(geo.map((r) => r.surface)), [geo]);
@@ -107,14 +135,18 @@ export function TrendTab({
   useEffect(() => {
     if (!latest) return;
     let active = true;
-    createClient()
-      .from("tracker_observations")
-      .select("obs_id, surface, week, citations, entities")
-      .eq("client_id", clientId)
-      .eq("week", latest)
-      .then(({ data }) => {
-        if (active) setObsState({ week: latest, rows: (data ?? []) as ObsLite[] });
-      });
+    const supabase = createClient();
+    fetchAllRows<ObsLite>((from, to) =>
+      supabase
+        .from("tracker_observations")
+        .select("obs_id, surface, week, citations, entities")
+        .eq("client_id", clientId)
+        .eq("week", latest)
+        .order("obs_id")
+        .range(from, to),
+    ).then((res) => {
+      if (active) setObsState({ week: latest, rows: res.rows, error: res.error });
+    });
     return () => {
       active = false;
     };
@@ -125,35 +157,46 @@ export function TrendTab({
     if (!rankLatest) return;
     let active = true;
     const wks = rankPrev ? [rankLatest, rankPrev] : [rankLatest];
-    createClient()
-      .from("tracker_rank_observations")
-      .select("keyword_id, keyword_text, intent, surface, best_position, best_section, best_section_rank, error, week")
-      .eq("client_id", clientId)
-      .in("week", wks)
-      .order("keyword_id")
-      .then(({ data }) => {
-        if (active) setRankState({ key: `${rankLatest}|${rankPrev ?? ""}`, rows: (data ?? []) as RankLite[] });
-      });
+    const supabase = createClient();
+    fetchAllRows<RankLite>((from, to) =>
+      supabase
+        .from("tracker_rank_observations")
+        .select("keyword_id, keyword_text, intent, surface, best_position, best_section, best_section_rank, error, week")
+        .eq("client_id", clientId)
+        .in("week", wks)
+        .order("keyword_id")
+        .order("obs_id")
+        .range(from, to),
+    ).then((res) => {
+      if (active) setRankState({ key: `${rankLatest}|${rankPrev ?? ""}`, rows: res.rows, error: res.error });
+    });
     return () => {
       active = false;
     };
   }, [clientId, rankLatest, rankPrev]);
 
-  const obs = latest && obsState.week === latest ? obsState.rows : [];
-  const rankObs = rankKey && rankState.key === rankKey ? rankState.rows : [];
+  const obsReady = Boolean(latest) && obsState.week === latest;
+  const obs = obsReady ? obsState.rows : [];
+  const obsError = obsReady ? obsState.error : null;
+  const rankReady = Boolean(rankKey) && rankState.key === rankKey;
+  const rankObs = rankReady ? rankState.rows : [];
+  const rankError = rankReady ? rankState.error : null;
 
   if (weekly === null) return <p className="text-sm text-muted">불러오는 중…</p>;
+  // 질의 오류를 '데이터 없음' 으로 보이게 하지 않는다
+  if (weekly.error) return <Notice kind="error">집계를 불러오지 못했습니다: {weekly.error}</Notice>;
   if (scope === "seo") {
     if (rank.length === 0 || !rankLatest) {
       return <Notice kind="info">아직 검색 순위 집계가 없습니다. 트래커에 검색어를 등록하고 실행하면 나타납니다.</Notice>;
     }
     return (
       <div className="space-y-5">
+        {rankError && <Notice kind="error">검색 순위 관측을 불러오지 못했습니다: {rankError}</Notice>}
         <RankSection rank={rank} latest={rankLatest} prev={rankPrev} rankObs={rankObs} />
       </div>
     );
   }
-  if (weekly.length === 0 || geo.length === 0) {
+  if (geo.length === 0) {
     return (
       <Notice kind="info">
         아직 AI 노출 집계가 없습니다. 실행이 끝나면 자동으로 판정·집계돼 여기에 나타납니다.
@@ -242,7 +285,7 @@ export function TrendTab({
                 })}
               </div>
 
-              <Section title="주간 추이 (%)">
+              <Section title="주간 추이 (%)" right={<span className="text-xs text-muted">최근 {TREND_WEEKS}주</span>}>
                 <div className="h-80">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
@@ -270,6 +313,8 @@ export function TrendTab({
                   <p className="mt-2 text-xs text-muted">추세는 4주 이상 쌓여야 읽을 수 있습니다. 지금 {weeks.length}주.</p>
                 )}
               </Section>
+
+              {obsError && <Notice kind="error">최근 주 관측을 불러오지 못했습니다: {obsError}</Notice>}
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Section title="경쟁사 대비 언급률 (최근 주)">

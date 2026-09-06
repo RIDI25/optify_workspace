@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { decryptSecret } from "@/lib/crypto";
 import { wpTestConnection } from "@/lib/wordpress";
-import { isSafePublicUrl } from "@/lib/url-guard";
+import { isSafePublicUrlResolved } from "@/lib/url-guard";
 
 export const runtime = "nodejs";
 
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   }
 
   // SSRF 완화: http(s)만, 사설/내부 주소 차단 [AUDIT L-2]
-  const guard = isSafePublicUrl(url);
+  const guard = await isSafePublicUrlResolved(url);
   if (!guard.ok) {
     return NextResponse.json({ ok: false, error: guard.error });
   }

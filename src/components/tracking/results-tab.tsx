@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { STATUS_LABELS, surfaceLabel } from "@/lib/tracker";
+import { STATUS_LABELS, fetchAllRows, surfaceLabel } from "@/lib/tracker";
 import type { TrackerObservation, TrackerRankObservation, TrackerRun } from "@/types/tracker";
 import { DataTable, ExtLink, Notice, Section, Select } from "./ui";
 import { useSignedUrl } from "./use-signed-url";
@@ -12,10 +12,11 @@ export function ResultsTab({ runs, scope }: { runs: TrackerRun[]; scope: "geo" |
   const [runId, setRunId] = useState(runs[0]?.run_id ?? "");
   const activeRun = runs.find((r) => r.run_id === runId) ?? runs[0];
   // 실행별로 불러온 결과. runId 가 다르면 아직 불러오는 중
-  const [data, setData] = useState<{ runId: string; obs: TrackerObservation[]; rankObs: TrackerRankObservation[] }>({
+  const [data, setData] = useState<{ runId: string; obs: TrackerObservation[]; rankObs: TrackerRankObservation[]; error: string | null }>({
     runId: "",
     obs: [],
     rankObs: [],
+    error: null,
   });
   const [promptKey, setPromptKey] = useState("");
   const [rep, setRep] = useState<number>(1);
@@ -26,16 +27,17 @@ export function ResultsTab({ runs, scope }: { runs: TrackerRun[]; scope: "geo" |
     if (!activeRun) return;
     let active = true;
     const supabase = createClient();
+    const runId = activeRun.run_id;
     Promise.all([
-      supabase.from("tracker_observations").select("*").eq("run_id", activeRun.run_id).order("collected_at"),
-      supabase.from("tracker_rank_observations").select("*").eq("run_id", activeRun.run_id).order("collected_at"),
+      fetchAllRows<TrackerObservation>((from, to) =>
+        supabase.from("tracker_observations").select("*").eq("run_id", runId).order("collected_at").order("obs_id").range(from, to),
+      ),
+      fetchAllRows<TrackerRankObservation>((from, to) =>
+        supabase.from("tracker_rank_observations").select("*").eq("run_id", runId).order("collected_at").order("obs_id").range(from, to),
+      ),
     ]).then(([o, r]) => {
       if (!active) return;
-      setData({
-        runId: activeRun.run_id,
-        obs: (o.data ?? []) as TrackerObservation[],
-        rankObs: (r.data ?? []) as TrackerRankObservation[],
-      });
+      setData({ runId, obs: o.rows, rankObs: r.rows, error: o.error ?? r.error });
     });
     return () => {
       active = false;
@@ -45,6 +47,7 @@ export function ResultsTab({ runs, scope }: { runs: TrackerRun[]; scope: "geo" |
   const obs = useMemo(() => (loaded ? data.obs : []), [loaded, data.obs]);
   const rankObs = useMemo(() => (loaded ? data.rankObs : []), [loaded, data.rankObs]);
   const loading = Boolean(activeRun) && !loaded;
+  const loadError = loaded ? data.error : null;
 
   const prompts = useMemo(() => {
     const seen = new Map<string, { key: string; label: string }>();
@@ -103,8 +106,9 @@ export function ResultsTab({ runs, scope }: { runs: TrackerRun[]; scope: "geo" |
       </Section>
 
       {loading && <p className="text-sm text-muted">불러오는 중…</p>}
+      {loadError && <Notice kind="error">결과를 불러오지 못했습니다: {loadError}</Notice>}
 
-      {scope === "seo" && !loading && rankObs.length === 0 && (
+      {scope === "seo" && !loading && !loadError && rankObs.length === 0 && (
         <Notice kind="info">이 실행에는 검색 순위 관측이 없습니다. 검색 순위 표면이 켜진 실행을 고르세요.</Notice>
       )}
       {scope === "seo" && activeRank && (
@@ -113,7 +117,7 @@ export function ResultsTab({ runs, scope }: { runs: TrackerRun[]; scope: "geo" |
         </Section>
       )}
 
-      {scope === "geo" && !loading && obs.length === 0 && (
+      {scope === "geo" && !loading && !loadError && obs.length === 0 && (
         <Notice kind="info">이 실행에는 AI 관측이 없습니다. AI 표면이 켜진 실행을 고르세요.</Notice>
       )}
 

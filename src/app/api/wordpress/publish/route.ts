@@ -8,8 +8,10 @@ import { isSupabaseStorageUrl } from "@/lib/url-guard";
 export const runtime = "nodejs";
 
 /**
- * WP 초안 발행.
- * body: { clientId, title, body(markdown), contentId? }
+ * WP 초안 발행 (승인 전에도 보낼 수 있는 '초안'이다. 발행 완료 표시는 승인 뒤에만 — DB 트리거 0026).
+ * body: { clientId, title, body(markdown), contentHtml?, contentId?, featuredImage? }
+ * - contentId 가 있으면 그 콘텐츠가 속한 고객사의 WP 로만 보낸다. 화면에서 고객사를 바꾼 뒤
+ *   남아 있던 글을 보내도 다른 고객사 WP 에 초안이 생기지 않는다 [코덱스 01].
  * 성공 시 wp_post_id를 contents에 저장.
  */
 export async function POST(req: NextRequest) {
@@ -30,10 +32,33 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // 저장된 콘텐츠라면 소속 고객사·채널을 서버가 확인한다
+  let targetClientId: string = clientId;
+  if (contentId) {
+    const { data: content } = await supabase
+      .from("contents")
+      .select("id, client_id, channel")
+      .eq("id", contentId)
+      .maybeSingle();
+    if (!content) {
+      return NextResponse.json({ ok: false, error: "콘텐츠를 찾을 수 없습니다." }, { status: 404 });
+    }
+    if (content.client_id !== clientId) {
+      return NextResponse.json(
+        { ok: false, error: "이 글은 지금 고른 고객사의 글이 아닙니다. 화면을 새로고침한 뒤 다시 시도하세요." },
+        { status: 400 },
+      );
+    }
+    if (content.channel !== "wordpress") {
+      return NextResponse.json({ ok: false, error: "워드프레스 채널 글만 WP 초안으로 보낼 수 있습니다." }, { status: 400 });
+    }
+    targetClientId = content.client_id;
+  }
+
   const { data: settings } = await supabase
     .from("channel_settings")
     .select("wp_url, wp_username, wp_app_password_encrypted")
-    .eq("client_id", clientId)
+    .eq("client_id", targetClientId)
     .eq("channel", "wordpress")
     .single();
 
@@ -88,7 +113,11 @@ export async function POST(req: NextRequest) {
     );
 
     if (contentId) {
-      await supabase.from("contents").update({ wp_post_id: id }).eq("id", contentId);
+      await supabase
+        .from("contents")
+        .update({ wp_post_id: id })
+        .eq("id", contentId)
+        .eq("client_id", targetClientId);
     }
 
     return NextResponse.json({ ok: true, wpPostId: id, thumbnailSet, thumbnailError });

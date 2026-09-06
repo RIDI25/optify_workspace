@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { markdownToBasicHtml, stripMarkdown } from "@/lib/text";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { createClient } from "@/lib/supabase/client";
 import { SendToPlanFooter } from "@/components/generate/send-to-plan";
 import {
@@ -42,6 +43,8 @@ export interface ContentResultData {
   canDelete?: boolean;
   onDeleted?: () => void;
 }
+
+const subscribeNever = () => () => {};
 
 async function fetchBlob(url: string): Promise<Blob> {
   const res = await fetch(url);
@@ -247,11 +250,10 @@ export function ContentResultView(props: ContentResultData) {
     setTimeout(() => setApprovalMsg(""), 2500);
   }
 
-  const displayHtml = isWp
-    ? body
-    : isNaver
-      ? markdownToBasicHtml(body)
-      : "";
+  // 저장된/생성된 HTML 은 정화해서만 그린다 [코덱스 03]. 서버 렌더 단계(mounted=false)에서는 그리지 않는다.
+  const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
+  const rawHtml = isWp ? body : isNaver ? markdownToBasicHtml(body) : "";
+  const displayHtml = mounted && rawHtml ? sanitizeHtml(rawHtml) : "";
 
   const charCount = isWp
     ? body.replace(/<[^>]+>/g, "").length

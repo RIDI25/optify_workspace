@@ -12,7 +12,6 @@ import {
   TASK_STATUSES,
   TASK_TYPES,
   taskStatusLabel,
-  taskTypeLabel,
 } from "@/lib/tasks";
 import { EVENT_TYPES, eventTypeLabel } from "@/lib/schedule";
 import {

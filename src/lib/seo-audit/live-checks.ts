@@ -1,3 +1,4 @@
+import { safeFetch } from "@/lib/url-guard";
 /**
  * 라이브 체크 — 대상 사이트를 서버에서 직접 조회해 측정.
  * 스크리밍프로그 무료판이 못 보는 영역(스키마·GEO·OG·robots/sitemap 실시간·속도·네이버 노출) 담당.
@@ -13,10 +14,10 @@ async function fetchText(
   timeout = FETCH_TIMEOUT,
 ): Promise<{ status: number; finalUrl: string; text: string } | null> {
   try {
-    const res = await fetch(url, {
+    // 리다이렉트 목적지가 내부 주소면 거기서 멈춘다 (safeFetch 가 단계마다 검사)
+    const res = await safeFetch(url, {
       headers: { "User-Agent": UA, Accept: "text/html,application/xhtml+xml,*/*" },
       signal: AbortSignal.timeout(timeout),
-      redirect: "follow",
     });
     const text = await res.text();
     return { status: res.status, finalUrl: res.url || url, text };

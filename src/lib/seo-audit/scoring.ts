@@ -8,7 +8,6 @@ import {
   auditInfra,
   auditPage,
   auditSpeed,
-  type PageAudit,
 } from "@/lib/seo-audit/live-checks";
 import {
   extractSiteWideIssues,

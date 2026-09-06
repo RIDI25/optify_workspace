@@ -45,14 +45,14 @@ export async function POST(req: NextRequest) {
   // 채널 프리셋 조회
   const { data: settings } = await supabase
     .from("channel_settings")
-    .select("preset")
+    .select("preset, category")
     .eq("client_id", body.clientId)
     .eq("channel", body.channel)
     .single();
 
   const { data: clientRow } = await supabase
     .from("clients")
-    .select("is_internal")
+    .select("is_internal, name")
     .eq("id", body.clientId)
     .single();
 
@@ -66,6 +66,8 @@ export async function POST(req: NextRequest) {
     extraInstructions: body.extraInstructions,
     isInternalClient: clientRow?.is_internal ?? false,
     naverCategory: body.naverCategory ?? null,
+    clientName: clientRow?.name ?? null,
+    blogCategory: (settings as { category?: string | null } | null)?.category ?? null,
   });
   const userPrompt = buildUserPrompt({
     channel: body.channel,

@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     .single();
   const { data: clientRow } = await supabase
     .from("clients")
-    .select("is_internal")
+    .select("is_internal, name")
     .eq("id", clientId)
     .single();
 
@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
     extraInstructions,
     imageCount,
     isInternalClient: clientRow?.is_internal ?? false,
+    clientName: clientRow?.name ?? null,
   });
 
   try {

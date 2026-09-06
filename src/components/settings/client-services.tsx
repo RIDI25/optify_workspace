@@ -39,7 +39,10 @@ export function ClientServicesSection({
   const [adding, setAdding] = useState(false);
   const [type, setType] = useState(SERVICES[0].key);
   const [startDate, setStartDate] = useState(today());
-  const [endDate, setEndDate] = useState("");
+  // 종료일은 유형·시작일 기준으로 렌더 중 파생한다 (기간제면 시작일 + 기본 개월, 아니면 빈값).
+  // 손으로 고친 값은 그 유형·시작일 조합에서만 유지되고, 유형이나 시작일이 바뀌면 다시 자동 계산된다
+  // — effect 안 동기 setState 대신 keyed state 패턴.
+  const [endDateOverride, setEndDateOverride] = useState<{ key: string; value: string } | null>(null);
   const [amount, setAmount] = useState("");
   const [monthlyFee, setMonthlyFee] = useState("");
   const [memo, setMemo] = useState("");
@@ -47,6 +50,14 @@ export function ClientServicesSection({
   const [msg, setMsg] = useState("");
 
   const def = getService(type);
+  const endDateKey = `${type}|${startDate}`;
+  const endDate =
+    endDateOverride && endDateOverride.key === endDateKey
+      ? endDateOverride.value
+      : def?.billing === "period"
+        ? addMonths(startDate, def.defaultMonths ?? 6)
+        : "";
+  const setEndDate = (value: string) => setEndDateOverride({ key: endDateKey, value });
 
   const reload = useCallback(() => {
     createClient()
@@ -58,15 +69,6 @@ export function ClientServicesSection({
   }, [clientId]);
 
   useEffect(reload, [reload]);
-
-  // 유형 변경 시 기간제면 종료일 자동 계산 (기본 6개월)
-  useEffect(() => {
-    if (def?.billing === "period") {
-      setEndDate(addMonths(startDate, def.defaultMonths ?? 6));
-    } else {
-      setEndDate("");
-    }
-  }, [type, startDate, def]);
 
   async function add() {
     if (!def) return;

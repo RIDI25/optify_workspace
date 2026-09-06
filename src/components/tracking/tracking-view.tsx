@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { fetchAllRows } from "@/lib/tracker";
 import { useClientContext } from "@/components/providers/client-context";
 import type { TrackerClient, TrackerRun } from "@/types/tracker";
 import { OverviewTab } from "./overview-tab";
@@ -34,11 +35,18 @@ export function TrackingView() {
   const scopeDef = SCOPES.find((s) => s.key === scope) ?? SCOPES[0];
   const [tab, setTab] = useState<Tab>("overview");
   // 고객사별로 불러온 상태. clientId 가 다르면 아직 불러오는 중
-  const [data, setData] = useState<{ clientId: string; tc: TrackerClient | null; runs: TrackerRun[]; tableMissing: boolean }>({
+  const [data, setData] = useState<{
+    clientId: string;
+    tc: TrackerClient | null;
+    runs: TrackerRun[];
+    tableMissing: boolean;
+    runsError: string | null;
+  }>({
     clientId: "",
     tc: null,
     runs: [],
     tableMissing: false,
+    runsError: null,
   });
 
   useEffect(() => {
@@ -47,18 +55,23 @@ export function TrackingView() {
     const supabase = createClient();
     Promise.all([
       supabase.from("tracker_clients").select("*").eq("client_id", selectedClientId).maybeSingle(),
-      supabase
-        .from("tracker_runs")
-        .select("*")
-        .eq("client_id", selectedClientId)
-        .order("started_at", { ascending: false }),
+      fetchAllRows<TrackerRun>((from, to) =>
+        supabase
+          .from("tracker_runs")
+          .select("*")
+          .eq("client_id", selectedClientId)
+          .order("started_at", { ascending: false })
+          .order("run_id", { ascending: false })
+          .range(from, to),
+      ),
     ]).then(([tcRes, runsRes]) => {
       if (!active) return;
       setData({
         clientId: selectedClientId,
         tc: (tcRes.data ?? null) as TrackerClient | null,
-        runs: (runsRes.data ?? []) as TrackerRun[],
+        runs: runsRes.rows,
         tableMissing: Boolean(tcRes.error),
+        runsError: runsRes.error,
       });
     });
     return () => {
@@ -66,7 +79,7 @@ export function TrackingView() {
     };
   }, [selectedClientId]);
   const loading = data.clientId !== selectedClientId;
-  const { tc, runs, tableMissing } = data;
+  const { tc, runs, tableMissing, runsError } = data;
 
   if (clientsLoading) return null;
   if (!selectedClientId) {
@@ -114,6 +127,10 @@ export function TrackingView() {
           </button>
         ))}
       </div>
+
+      {!loading && !tableMissing && tc && runsError && (
+        <Notice kind="error">실행 이력을 불러오지 못했습니다: {runsError}</Notice>
+      )}
 
       {loading ? (
         <p className="text-sm text-muted">불러오는 중…</p>

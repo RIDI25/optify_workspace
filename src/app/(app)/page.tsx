@@ -6,6 +6,7 @@ import { planStatusLabel } from "@/lib/plan-status";
 import { autoDoneKeys } from "@/lib/onboarding";
 import { daysUntilEnd, getService, serviceLabel } from "@/lib/services";
 import { taskStatusLabel } from "@/lib/tasks";
+import { isPublished } from "@/lib/publish-stats";
 import { HomeSchedule } from "@/components/dashboard/home-schedule";
 import { TrackerSummary } from "@/components/dashboard/tracker-summary";
 import type {
@@ -148,7 +149,7 @@ export default async function DashboardPage() {
       id: c.id,
       name: c.name,
       generated: rows.length,
-      published: rows.filter((r) => r.wp_post_id || r.published_at).length,
+      published: rows.filter(isPublished).length, // 발행 완료 표시된 글만 (WP 초안 제외) — lib/publish-stats
     };
   });
 

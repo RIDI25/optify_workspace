@@ -160,6 +160,8 @@ export async function revealChannelPassword(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "로그인이 필요합니다." };
+  const { data: me } = await supabase.from("profiles").select("id").eq("id", user.id).maybeSingle();
+  if (!me) return { ok: false, error: "팀에 등록된 계정만 볼 수 있습니다." };
   const { data, error } = await supabase
     .from("channel_settings")
     .select("account_password_encrypted")

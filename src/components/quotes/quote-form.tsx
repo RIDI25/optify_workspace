@@ -123,7 +123,6 @@ export function QuoteForm({
       }
       setMsg(`진단 결과에서 개선 품목 ${drafts.length}개를 불러왔습니다. 수량·단가를 확인하세요.`);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diagnosisId]);
 
   // 리드에서 진입 (/quotes?leadId=...) → 고객 정보 프리필 + 연결
@@ -154,37 +153,41 @@ export function QuoteForm({
       });
   }, [leadId]);
 
-  // '복사해서 새 견적' — 날짜는 오늘 기준으로 갱신, 견적번호는 새로 채번
-  useEffect(() => {
-    if (!seed) return;
-    setCustomerName(seed.customer_name);
-    setCustomerContact(seed.customer_contact ?? "");
-    setCustomerPhone(seed.customer_phone ?? "");
-    setCustomerEmail(seed.customer_email ?? "");
-    setQuoteDate(localDate());
-    setValidUntil(localDate(QUOTE_VALID_DAYS));
-    setItems(
-      seed.items.map((it) => ({
-        key: nextKey(),
-        category: it.category ?? null,
-        name: it.name,
-        detail: it.detail,
-        qty: it.qty,
-        unit: it.unit,
-        unit_price: it.unit_price,
-      })),
-    );
-    setVatMode(seed.vat_mode);
-    setNotes(seed.notes ?? "");
-    setSavedQuoteId(null);
-    setSavedQuoteNo(null);
-    setLinkedLeadId(seed.lead_id ?? null);
-    setDealChannel(seed.deal_channel ?? "direct");
-    setPartnerName(seed.partner_name ?? "");
-    setEndClientName(seed.end_client_name ?? "");
-    setMsg(`${seed.quote_no} 내용을 복사했습니다. 출력 시 새 견적번호로 저장됩니다.`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seedNonce]);
+  // '복사해서 새 견적' — seedNonce 가 바뀐 렌더에서 seed 로 폼을 채운다 (날짜는 오늘 기준으로 갱신, 견적번호는 새로 채번).
+  // effect 안 동기 setState 대신 '마지막으로 적용한 nonce' 를 기억해 렌더 중에 반영한다 (React 의 이전 렌더 정보 저장 패턴).
+  // 렌더 중에는 keyRef 를 건드릴 수 없어 품목 키는 음수(-1, -2, …)로 준다 — nextKey() 는 양수만 만들어 충돌하지 않는다.
+  const [appliedSeedNonce, setAppliedSeedNonce] = useState<number | null>(null);
+  if (seedNonce !== appliedSeedNonce) {
+    setAppliedSeedNonce(seedNonce);
+    if (seed) {
+      setCustomerName(seed.customer_name);
+      setCustomerContact(seed.customer_contact ?? "");
+      setCustomerPhone(seed.customer_phone ?? "");
+      setCustomerEmail(seed.customer_email ?? "");
+      setQuoteDate(localDate());
+      setValidUntil(localDate(QUOTE_VALID_DAYS));
+      setItems(
+        seed.items.map((it, i) => ({
+          key: -(i + 1),
+          category: it.category ?? null,
+          name: it.name,
+          detail: it.detail,
+          qty: it.qty,
+          unit: it.unit,
+          unit_price: it.unit_price,
+        })),
+      );
+      setVatMode(seed.vat_mode);
+      setNotes(seed.notes ?? "");
+      setSavedQuoteId(null);
+      setSavedQuoteNo(null);
+      setLinkedLeadId(seed.lead_id ?? null);
+      setDealChannel(seed.deal_channel ?? "direct");
+      setPartnerName(seed.partner_name ?? "");
+      setEndClientName(seed.end_client_name ?? "");
+      setMsg(`${seed.quote_no} 내용을 복사했습니다. 출력 시 새 견적번호로 저장됩니다.`);
+    }
+  }
 
   function addItem() {
     setItems((prev) => [...prev, blankItem()]);

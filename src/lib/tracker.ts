@@ -80,6 +80,9 @@ export const RANK_METRICS = [
 /** 추세 차트 선 색 (파랑 계열 기본 + 구분색) */
 export const CHART_COLORS = ["#2563eb", "#0d9488", "#d97706", "#7c3aed", "#db2777"];
 
+/** 추세 화면이 불러와 보여 주는 최근 주 수 */
+export const TREND_WEEKS = 12;
+
 export function surfaceLabel(s: string): string {
   return SURFACE_LABELS[s] ?? s;
 }
@@ -187,4 +190,30 @@ export function unlistedEntities(observations: TrackerObservation[], n = 10): [s
   return Array.from(counter.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, n);
+}
+
+/** 주 문자열(ISO 주, 예: 2026-W36) 가운데 최신 n 개를 오름차순으로. 중복은 하나로 센다. */
+export function latestWeeks(weeks: Iterable<string>, n = TREND_WEEKS): string[] {
+  return uniqueSorted(weeks).slice(-n);
+}
+
+/**
+ * Supabase(PostgREST) 는 select 한 번을 프로젝트 max-rows(기본 1000)에서 조용히 잘라 버린다.
+ * build(from, to) 가 만든 질의에 .range(from, to) 창을 옮겨 가며 한 페이지가 pageSize 보다 적게 올 때까지 모은다.
+ * 첫 오류에서 멈추고 그 메시지를 돌려준다 (그때까지 모은 행은 rows 에 남긴다).
+ * 창을 옮겨도 행이 겹치거나 빠지지 않도록 build 쪽 정렬은 고유 키까지 포함해야 한다.
+ */
+export async function fetchAllRows<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  pageSize = 1000,
+): Promise<{ rows: T[]; error: string | null }> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await build(from, from + pageSize - 1);
+    if (error) return { rows, error: error.message };
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return { rows, error: null };
 }

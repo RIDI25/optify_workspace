@@ -1,8 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-/** 공개 경로(비인증 접근 허용). cron은 라우트 내부에서 CRON_SECRET으로 자체 인증 */
-const PUBLIC_PATHS = ["/login", "/auth", "/api/daily-report/cron"];
+/** 공개 경로(비인증 접근 허용). cron 경로는 각 라우트가 CRON_SECRET 으로 자체 인증한다 — 새 cron 을 만들면 여기에도 추가할 것 */
+const PUBLIC_PATHS = ["/login", "/auth", "/api/daily-report/cron", "/api/tasks/cron"];
 
 /**
  * 세션 갱신 + 라우트 가드.

@@ -3,8 +3,8 @@
 # 옵티파이 워크스페이스 (Optify Workspace)
 
 옵티파이(B2B SEO/GEO 마케팅)의 콘텐츠 제작·키워드 리서치·콘텐츠 플랜·월간 리포트를
-통합 관리하는 2인용(owner 유리 + member 동생) 내부 웹앱. 전체 기획은
-`optify-workspace-build-spec.md` 참조 — 그 문서가 단일 진실 소스다.
+통합 관리하는 2인용(owner 유리 + member 동생) 내부 웹앱. **현재 상태의 단일 기준은 이 문서(CLAUDE.md)** 다.
+`optify-workspace-build-spec.md` 는 2026-07 초기 명세(역사 문서), 감사 문서는 날짜가 있는 과거 기록으로 본다. DB 셋업·적용 순서는 `supabase/README.md`.
 
 ## 핵심 설계 원칙 (반드시 준수)
 1. **Client-scoped** — 옵티파이 자체가 `is_internal=true`인 첫 클라이언트. 고객사 추가는 코드 수정 없이 데이터 추가로.
@@ -56,7 +56,19 @@ AI 비서(우하단 위젯 → `/api/assistant`, Claude Opus 5 tool-use 루프, 
 '지금 실행'·고객사 등록 마법사(B단계)와 콘텐츠 발행→조치 기록·키워드→질문·리포트 섹션·AI 비서 도구(C단계)는 아직 맥 앱에 있다.
 사이드바 IA(2026-09-06 재편, `lib/nav.ts` NAV_BLOCKS): 두 블록으로 시각 구분 — 🏢 옵티파이 내부 업무(대시보드·영업·회계·팀·관리, 회색 카드) / 🤝 고객사 업무(파란 틴트 카드: 고객사 선택 + 진행중 계약 칩, 콘텐츠 1~4 접이식(localStorage 기억), SEO=/tracking?view=seo, GEO=/tracking?view=geo, 통합리포트=/reports). 계약 서비스(`client_services`)에 없는 업무는 흐리게만 표시하고 숨기지 않는다(기능 변화 없음). 상단 고객사 탭(client-tabs)은 제거.
 /tracking 은 `view` 쿼리로 같은 데이터를 GEO(AI 노출)·SEO(검색 순위) 관점으로 나눠 보여 준다 (개요 탭은 공통).
-DB: `supabase/migrations/0001~0025`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries, 0025=tracker_* 트래커 연동).
+코덱스 검토 반영(2026-09-06, 0026_hardening.sql + 코드): ① 고객사를 바꾸면 생성·라이브러리·리포트 화면을 새로 그린다(`providers/client-scoped.tsx`), WP 초안 전송은 서버가 글의 소속 고객사·채널을 확인(`api/wordpress/publish`).
+② member 의 role 변경은 DB 트리거로 차단, profiles·clients·channel_settings·api_usage_logs·daily_reports 읽기도 팀원(`is_team_member()`)만, 채널 비밀번호 조회는 프로필 있는 계정만.
+③ 저장된 HTML 은 DOMPurify(`lib/sanitize.ts`)로 정화해서만 그리고 서버 렌더에서는 그리지 않는다. `lib/text.ts` 는 속성값 이스케이프 + http(s)·상대 경로만 허용.
+④ `/api/tasks/cron` 미들웨어 공개 경로 등록, 발행일 이후면 따라잡기, 계약 진행중·기간 안일 때만, `tasks.issued_ym` 유니크로 중복 방지, due_date 부여.
+⑤ **발행 규칙**: '발행 완료'(published_at)는 승인된 글만(액션 + DB 트리거). WP '초안' 전송은 승인 전에도 가능(초안이지 공개 아님). 승인 뒤 본문을 고치면 자동으로 다시 검수 대기.
+⑥ **발행 집계 기준은 `lib/publish-stats.ts` 하나**: 발행 = published_at, 월 귀속은 KST published_at 기준(생성량은 created_at). WP 초안만 보낸 글은 '발행'이 아니다. 리포트에 'WP 초안만'·'외부 작성 발행'을 따로 표시.
+⑦ 생성 화면에서 고친 본문은 '수정 내용 저장'을 눌러야 라이브러리에 반영되고, 저장 전엔 완료 처리를 막는다.
+⑧ 외부 고객사 글에는 옵티파이 정체성 규칙·옵티파이 블로그 카테고리 체계를 넣지 않는다(`lib/generation/brand-rules.ts` COMMON/OPTIFY 분리, 화자는 고객사, 카테고리는 channel_settings.category). 고객사 프리셋 편집 UI 복원은 아직 안 함.
+⑨ 매출 '입금완료' 전환 시 남은 금액을 입금 내역에 자동 기록(되돌리면 자동 기록분만 삭제) → 입금·미수금 집계와 일치.
+⑩ 트래커 화면은 최근 12주만, 1,000행 단위로 나눠 읽고 조회 오류를 '데이터 없음'과 구분(`lib/tracker.ts` fetchAllRows).
+⑪ SSRF: `lib/url-guard.ts` 가 IPv6 매핑·DNS 결과·리다이렉트 단계까지 검사(`isSafePublicUrlResolved`, `safeFetch`).
+검증: `npm test`(vitest — text·publish-stats·url-guard), `npm run lint`, `npx tsc --noEmit`, `npm run build` 모두 통과가 커밋 조건.
+DB: `supabase/migrations/0001~0026`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries, 0025=tracker_* 트래커 연동, 0026=보안·정합성 강화). **0002 는 재실행 금지**(정책 전부 삭제).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)

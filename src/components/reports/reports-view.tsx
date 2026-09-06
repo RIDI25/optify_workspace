@@ -11,6 +11,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { createClient } from "@/lib/supabase/client";
+import { monthBoundsUtc, monthContentSummary, type PublishRow } from "@/lib/publish-stats";
 import { useClientContext } from "@/components/providers/client-context";
 import { channelLabel } from "@/lib/channels";
 import { saveReport } from "@/lib/actions/reports";
@@ -62,9 +63,15 @@ function prevYm(ym: string): string {
 }
 
 interface ContentSummary {
+  /** 이 달 생성 */
   total: number;
+  /** 이 달 발행 완료(published_at 기준). WP 초안만 보낸 글은 세지 않는다 */
   published: number;
   byChannel: Record<string, number>;
+  /** WP 초안만 보내고 발행 표시가 없는 글 */
+  wpDrafts?: number;
+  /** 따로 작성해 링크로 등록한 글 중 이 달 발행분 */
+  external?: number;
 }
 interface PlanRow {
   title: string;
@@ -136,6 +143,7 @@ export function ReportsView() {
   useEffect(() => {
     if (!selectedClientId) return;
     const supabase = createClient();
+    let active = true; // 고객사·월이 바뀌면 이전 조회 결과는 버린다 [코덱스 01]
 
     async function load() {
       // 기존 리포트
@@ -145,6 +153,7 @@ export function ReportsView() {
         .eq("client_id", selectedClientId)
         .eq("year_month", ym)
         .maybeSingle();
+      if (!active) return;
       setGsc(report?.gsc_snapshot ?? null);
       setGa4(report?.ga4_snapshot ?? null);
       setNaver(report?.naver_manual_metrics ?? defaultNaverMetrics());
@@ -157,26 +166,35 @@ export function ReportsView() {
       setGenMsg("");
       setSaveMsg("");
 
-      // 발행 콘텐츠 집계
-      const { start, end } = monthRange(ym);
+      // 발행 콘텐츠 집계 — 이 달에 생성됐거나 이 달에 발행된 글 (lib/publish-stats 기준)
+      const { startIso, endIso } = monthBoundsUtc(ym);
       const { data: contents } = await supabase
         .from("contents")
         .select("channel, wp_post_id, published_at, created_at")
         .eq("client_id", selectedClientId)
-        .gte("created_at", `${start}T00:00:00`)
-        .lte("created_at", `${end}T23:59:59`);
-      const rows = (contents ?? []) as {
-        channel: string;
-        wp_post_id: number | null;
-        published_at: string | null;
-      }[];
-      const byChannel: Record<string, number> = {};
-      let published = 0;
-      for (const r of rows) {
-        byChannel[r.channel] = (byChannel[r.channel] ?? 0) + 1;
-        if (r.wp_post_id || r.published_at) published++;
-      }
-      setContentSummary({ total: rows.length, published, byChannel });
+        .or(
+          `and(created_at.gte.${startIso},created_at.lte.${endIso}),and(published_at.gte.${startIso},published_at.lte.${endIso})`,
+        );
+      if (!active) return;
+      const summary = monthContentSummary((contents ?? []) as PublishRow[], ym);
+      // 따로 작성해 링크로 등록한 글(외부 작성)도 발행분에 포함
+      const { start, end } = monthRange(ym);
+      const { count: externalCount } = await supabase
+        .from("content_plans")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", selectedClientId)
+        .eq("status", "published")
+        .not("external_url", "is", null)
+        .gte("scheduled_date", start)
+        .lte("scheduled_date", end);
+      if (!active) return;
+      setContentSummary({
+        total: summary.total,
+        published: summary.published,
+        byChannel: summary.byChannel,
+        wpDrafts: summary.wpDrafts,
+        external: externalCount ?? 0,
+      });
 
       // 다음 달 플랜
       const nm = nextYm(ym);
@@ -188,6 +206,7 @@ export function ReportsView() {
         .gte("scheduled_date", nmr.start)
         .lte("scheduled_date", nmr.end)
         .order("scheduled_date");
+      if (!active) return;
       setNextPlans((plans ?? []) as PlanRow[]);
 
       // 월별 추이(네이버)
@@ -196,6 +215,7 @@ export function ReportsView() {
         .select("year_month, naver_manual_metrics")
         .eq("client_id", selectedClientId)
         .order("year_month");
+      if (!active) return;
       const t = (
         (past ?? []) as {
           year_month: string;
@@ -211,6 +231,9 @@ export function ReportsView() {
       setTrend(t);
     }
     void load();
+    return () => {
+      active = false;
+    };
   }, [selectedClientId, ym]);
 
   async function fetchAnalytics() {
@@ -608,7 +631,9 @@ export function ReportsView() {
             </p>
             <div className="flex flex-wrap gap-5 text-sm">
               <Stat label="총 생성" value={`${contentSummary.total}건`} />
-              <Stat label="발행" value={`${contentSummary.published}건`} />
+              <Stat label="발행 완료" value={`${contentSummary.published}건`} />
+              {contentSummary.wpDrafts ? <Stat label="WP 초안만" value={`${contentSummary.wpDrafts}건`} /> : null}
+              {contentSummary.external ? <Stat label="외부 작성 발행" value={`${contentSummary.external}건`} /> : null}
               {Object.entries(contentSummary.byChannel).map(([ch, n]) => (
                 <Stat key={ch} label={channelLabel(ch)} value={`${n}건`} />
               ))}

@@ -1,5 +1,12 @@
 # Supabase 셋업
 
+> ⚠️ **운영 DB 에서 `0002_rls.sql` 을 다시 실행하지 마세요.** 0002 는 public 스키마의 정책을 전부 지운 뒤 초기 정책만 다시 만들기 때문에
+> 이후 기능(0007·0009·0013~0026)의 접근 정책이 사라집니다. 새 DB 에 처음 세팅할 때만 씁니다.
+>
+> **현재 상태(2026-09-06)**: `migrations/0001` → … → `0026_hardening.sql` 까지 파일 이름 순서대로 모두 실행돼 있어야 합니다.
+> 접두사가 겹치는 `0008_default_assignee` / `0008_report_sections`, `0009_content_approval` / `0009_daily_reports` 는 서로 독립이라 둘 다 실행합니다.
+> 새 마이그레이션은 SQL Editor 에서 손으로 실행하고, 적용한 번호를 CLAUDE.md 에 적습니다.
+
 ## 1. 마이그레이션 실행
 Supabase 대시보드 → SQL Editor에서 아래 순서대로 실행:
 

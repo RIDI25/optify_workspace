@@ -509,12 +509,13 @@ function ChannelAccountsSection({
   const [settings, setSettings] = useState<ChannelSettings[]>([]);
   const [assigneeMsg, setAssigneeMsg] = useState("");
 
-  async function load() {
-    const { data } = await createClient()
+  // 상태 반영은 .then 콜백 안에서 한다 — effect 가 load() 를 직접 불러도 동기 setState 가 되지 않게.
+  function load() {
+    return createClient()
       .from("channel_settings")
       .select("id, channel, default_assignee")
-      .eq("client_id", clientId);
-    setSettings((data ?? []) as ChannelSettings[]);
+      .eq("client_id", clientId)
+      .then(({ data }) => setSettings((data ?? []) as ChannelSettings[]));
   }
   useEffect(() => {
     load();
@@ -610,11 +611,21 @@ function ChannelConnection({
         ? "플레이스 주소"
         : "채널 주소";
 
+  // 고객사·채널이 바뀌면 임시 상태(안내 메시지·비밀번호 입력·표시된 비밀번호)를 비운다.
+  // effect 안 동기 setState 대신 '마지막으로 적용한 키'를 기억해 렌더 중에 반영한다 (React 의 이전 렌더 정보 저장 패턴).
+  const connKey = `${cid}|${channel}`;
+  const [appliedConnKey, setAppliedConnKey] = useState(connKey);
+  if (appliedConnKey !== connKey) {
+    setAppliedConnKey(connKey);
+    if (cid && channel) {
+      setMsg("");
+      setShownPassword(null);
+      setPassword("");
+    }
+  }
+
   useEffect(() => {
     if (!cid || !channel) return;
-    setMsg("");
-    setShownPassword(null);
-    setPassword("");
     createClient()
       .from("channel_settings")
       .select("account_id, channel_url, category, account_password_encrypted")

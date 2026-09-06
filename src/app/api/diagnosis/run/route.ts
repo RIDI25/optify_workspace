@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { isSafePublicUrl } from "@/lib/url-guard";
+import { isSafePublicUrlResolved } from "@/lib/url-guard";
 import { runDiagnosis } from "@/lib/seo-audit/scoring";
 
 export const runtime = "nodejs";
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "URL이 필요합니다." }, { status: 400 });
   }
   const normalized = /^https?:\/\//i.test(url.trim()) ? url.trim() : `https://${url.trim()}`;
-  const guard = isSafePublicUrl(normalized);
+  const guard = await isSafePublicUrlResolved(normalized); // 호스트가 내부 주소로 풀리는 경우까지 차단
   if (!guard.ok) {
     return NextResponse.json({ ok: false, error: guard.error }, { status: 400 });
   }

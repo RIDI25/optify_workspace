@@ -13,24 +13,26 @@ import type { ClientService } from "@/types/database";
  */
 export function ServiceBanner() {
   const { selectedClientId, selectedClient } = useClientContext();
-  const [services, setServices] = useState<ClientService[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  // 조회 결과를 '어느 고객사 것인지'와 함께 보관하고, 현재 선택과 같을 때만 로드 완료로 본다.
+  // (effect 안에서 setLoaded(false) 를 동기 호출하지 않는 keyed state — 고객사가 바뀌면 저절로 미로드 상태가 된다)
+  const [fetched, setFetched] = useState<{ clientId: string; services: ClientService[] } | null>(null);
 
   useEffect(() => {
     if (!selectedClientId) return;
-    setLoaded(false);
+    const clientId = selectedClientId;
     createClient()
       .from("client_services")
       .select("*")
-      .eq("client_id", selectedClientId)
+      .eq("client_id", clientId)
       .in("status", ["active", "paused"])
       .then(({ data }) => {
-        setServices((data ?? []) as ClientService[]);
-        setLoaded(true);
+        setFetched({ clientId, services: (data ?? []) as ClientService[] });
       });
   }, [selectedClientId]);
 
-  if (!selectedClient || selectedClient.is_internal || !loaded) return null;
+  const current = fetched && fetched.clientId === selectedClientId ? fetched : null;
+  if (!selectedClient || selectedClient.is_internal || !current) return null;
+  const services = current.services;
 
   if (services.length === 0) {
     return (

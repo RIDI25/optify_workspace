@@ -70,11 +70,32 @@ function todayKst(): string {
  * 캘린더 반영 보장: 플랜이 없으면 자동 생성하고, 예정일이 없으면 오늘로 채운다
  * — 캘린더는 scheduled_date 있는 플랜만 그리기 때문.
  */
+/** 발행 완료 표시는 승인된 글만 (0026 트리거와 같은 규칙. WP '초안' 전송은 승인 전에도 가능). */
+async function requireApproved(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  contentId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const { data } = await supabase
+    .from("contents")
+    .select("approval_status")
+    .eq("id", contentId)
+    .maybeSingle();
+  if (!data) return { ok: false, error: "콘텐츠를 찾을 수 없습니다." };
+  if (data.approval_status !== "approved") {
+    return { ok: false, error: "승인 후 발행 완료로 표시할 수 있습니다. 라이브러리에서 검수 → 승인을 먼저 하세요." };
+  }
+  return { ok: true };
+}
+
 export async function setPublishedStatus(
   contentId: string,
   published: boolean,
 ): Promise<{ ok: boolean; publishedAt: string | null; error?: string }> {
   const supabase = await createClient();
+  if (published) {
+    const gate = await requireApproved(supabase, contentId);
+    if (!gate.ok) return { ok: false, publishedAt: null, error: gate.error };
+  }
   const publishedAt = published ? new Date().toISOString() : null;
   const { error } = await supabase
     .from("contents")
@@ -157,6 +178,10 @@ export async function markPlanPublished(
     : latest
       ? "review"
       : "idea";
+  if (published && latest) {
+    const gate = await requireApproved(supabase, latest.id);
+    if (!gate.ok) return { ok: false, error: gate.error };
+  }
   const { error } = await supabase
     .from("content_plans")
     .update({ status })
@@ -164,10 +189,11 @@ export async function markPlanPublished(
   if (error) return { ok: false, error: error.message };
 
   if (latest) {
-    await supabase
+    const { error: cErr } = await supabase
       .from("contents")
       .update({ published_at: published ? new Date().toISOString() : null })
       .eq("id", latest.id);
+    if (cErr) return { ok: false, error: cErr.message };
   }
   return { ok: true, status };
 }
@@ -331,6 +357,10 @@ export async function completeContent(
 ): Promise<{ ok: boolean; planId?: string; error?: string }> {
   const supabase = await createClient();
   const status: PlanStatus = input.publish ? "published" : "review";
+  if (input.publish && input.contentId) {
+    const gate = await requireApproved(supabase, input.contentId);
+    if (!gate.ok) return { ok: false, error: gate.error };
+  }
 
   let planId = input.planId ?? null;
   if (planId) {
@@ -367,7 +397,8 @@ export async function completeContent(
   if (input.contentId) {
     const patch: Record<string, unknown> = { plan_id: planId };
     if (input.publish) patch.published_at = new Date().toISOString();
-    await supabase.from("contents").update(patch).eq("id", input.contentId);
+    const { error: cErr } = await supabase.from("contents").update(patch).eq("id", input.contentId);
+    if (cErr) return { ok: false, error: cErr.message };
   }
   return { ok: true, planId: planId ?? undefined };
 }

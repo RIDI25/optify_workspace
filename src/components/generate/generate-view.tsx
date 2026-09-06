@@ -18,6 +18,7 @@ import {
 import { WordpressGenerator } from "@/components/generate/wordpress-generator";
 import { SendToPlanFooter } from "@/components/generate/send-to-plan";
 import { NaverResult } from "@/components/generate/naver-result";
+import { saveContentAssets } from "@/lib/actions/contents";
 import type { ChannelSettings } from "@/types/database";
 
 export function GenerateView() {
@@ -40,6 +41,10 @@ export function GenerateView() {
   );
   const [meta, setMeta] = useState<StreamMeta | null>(null);
   const [copied, setCopied] = useState<string>("");
+  // 화면에서 고친 본문이 라이브러리에 저장됐는지 (코덱스 08)
+  const [savedBody, setSavedBody] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
 
   useEffect(() => {
     if (!selectedClientId) return;
@@ -65,6 +70,8 @@ export function GenerateView() {
     if (!selectedClientId || !channel || !topic.trim()) return;
     setStatus("streaming");
     setBody("");
+    setSavedBody("");
+    setSaveMsg("");
     setMeta(null);
     setCopied("");
 
@@ -79,7 +86,7 @@ export function GenerateView() {
           topic,
           extraInstructions: extra,
           planId: planId ?? null,
-          naverCategory: isNaver ? naverCategory : null,
+          naverCategory: isNaver && selectedClient?.is_internal ? naverCategory : null,
         }),
       });
 
@@ -103,9 +110,9 @@ export function GenerateView() {
       const idx = buffer.indexOf(META_DELIMITER);
       if (idx !== -1) {
         // 서버가 DB 저장분에서 카테고리 마커를 제거하므로 화면 표시분도 동일하게 제거
-        setBody(
-          buffer.slice(0, idx).replace(NAVER_CATEGORY_MARKER_RE, "").trimEnd(),
-        );
+        const finalBody = buffer.slice(0, idx).replace(NAVER_CATEGORY_MARKER_RE, "").trimEnd();
+        setBody(finalBody);
+        setSavedBody(finalBody); // 서버가 이 본문을 라이브러리에 저장했다
         try {
           const m = JSON.parse(
             buffer.slice(idx + META_DELIMITER.length),
@@ -116,11 +123,29 @@ export function GenerateView() {
           setStatus("done");
         }
       } else {
+        setSavedBody(buffer);
         setStatus("done");
       }
     } catch (e) {
       setStatus("error");
       setBody(e instanceof Error ? e.message : "생성 실패");
+    }
+  }
+
+  const dirty = status === "done" && !!meta?.contentId && body !== savedBody;
+
+  async function saveBody() {
+    if (!meta?.contentId) return;
+    setSaving(true);
+    setSaveMsg("");
+    const r = await saveContentAssets(meta.contentId, { body });
+    setSaving(false);
+    if (r.ok) {
+      setSavedBody(body);
+      setSaveMsg("저장됨");
+      setTimeout(() => setSaveMsg(""), 1500);
+    } else {
+      setSaveMsg(`저장 실패: ${r.error ?? "알 수 없음"}`);
     }
   }
 
@@ -208,8 +233,8 @@ export function GenerateView() {
             </div>
           )}
 
-          {/* 네이버 블로그 카테고리 선택 */}
-          {isNaver && (
+          {/* 네이버 블로그 카테고리 선택 — 옵티파이 자체 블로그 체계라 내부 고객사에만 표시 (외부 고객사는 채널 설정의 카테고리 사용) */}
+          {isNaver && selectedClient?.is_internal && (
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-ink">
                 블로그 카테고리
@@ -315,6 +340,16 @@ export function GenerateView() {
                     >
                       다시 생성
                     </button>
+                    {dirty && (
+                      <button
+                        onClick={saveBody}
+                        disabled={saving}
+                        className="rounded-md bg-accent-deep px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                      >
+                        {saving ? "저장 중…" : "수정 내용 저장"}
+                      </button>
+                    )}
+                    {saveMsg && <span className="text-xs text-muted">{saveMsg}</span>}
                   </div>
                 </div>
                 <textarea
@@ -326,13 +361,21 @@ export function GenerateView() {
                 {meta && !meta.error && (
                   <p className="text-xs text-muted">
                     토큰: 입력 {meta.inputTokens.toLocaleString()} / 출력{" "}
-                    {meta.outputTokens.toLocaleString()} · 라이브러리에 저장됨
+                    {meta.outputTokens.toLocaleString()} ·{" "}
+                    {dirty ? (
+                      <span className="text-amber-700">수정 내용이 아직 저장되지 않았습니다</span>
+                    ) : (
+                      "라이브러리에 저장됨"
+                    )}
                   </p>
                 )}
                 {meta?.error && (
                   <p className="text-xs text-red-600">오류: {meta.error}</p>
                 )}
-                {status === "done" && meta?.contentId && (
+                {status === "done" && meta?.contentId && dirty && (
+                  <p className="text-xs text-muted">수정한 본문을 먼저 저장하면 완료 처리할 수 있습니다.</p>
+                )}
+                {status === "done" && meta?.contentId && !dirty && (
                   <div className="max-w-xs">
                     <SendToPlanFooter
                       clientId={selectedClientId}

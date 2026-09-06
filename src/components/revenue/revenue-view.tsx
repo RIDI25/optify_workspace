@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -59,6 +59,36 @@ const EMPTY_FORM = {
   quote_id: "",
 };
 
+/** 월별 × 거래처 적층 차트 데이터 (최근 12개월, 상위 4 거래처 + 기타) */
+function buildRevenueChart(active: TaxInvoice[]) {
+    const months = Array.from({ length: 12 }, (_, i) => monthKey(i - 11));
+    const totals = new Map<string, number>();
+    for (const inv of active) {
+      totals.set(inv.counterparty, (totals.get(inv.counterparty) ?? 0) + Number(inv.total_amount));
+    }
+    const top = [...totals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([name]) => name);
+    const hasEtc = totals.size > top.length;
+    const series = hasEtc ? [...top, "기타"] : top;
+
+    const chartData = months.map((m) => {
+      const row: Record<string, string | number> = {
+        month: `${Number(m.slice(5))}월`,
+      };
+      for (const name of series) row[name] = 0;
+      for (const inv of active) {
+        if (!inv.issue_date.startsWith(m)) continue;
+        const key = top.includes(inv.counterparty) ? inv.counterparty : "기타";
+        if (key === "기타" && !hasEtc) continue;
+        row[key] = (Number(row[key]) || 0) + Math.round(Number(inv.total_amount) / 10_000);
+      }
+      return row;
+    });
+    return { chartData, series };
+}
+
 export function RevenueView({ readOnly = false }: { readOnly?: boolean }) {
   const [invoices, setInvoices] = useState<TaxInvoice[]>([]);
   const [payments, setPayments] = useState<InvoicePayment[]>([]);
@@ -68,9 +98,14 @@ export function RevenueView({ readOnly = false }: { readOnly?: boolean }) {
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const reload = useCallback(async () => {
+  // 다시 불러오기: tick 을 올리면 아래 효과가 다시 돈다 (효과 안에서 동기 setState 를 하지 않기 위한 구조)
+  const [tick, setTick] = useState(0);
+  const reload = useCallback(() => setTick((t) => t + 1), []);
+
+  useEffect(() => {
+    let active = true;
     const supabase = createClient();
-    const [invRes, payRes, qRes] = await Promise.all([
+    Promise.all([
       supabase.from("tax_invoices").select("*").order("issue_date", { ascending: false }),
       supabase.from("invoice_payments").select("*").order("paid_date", { ascending: false }),
       supabase
@@ -79,16 +114,17 @@ export function RevenueView({ readOnly = false }: { readOnly?: boolean }) {
         .eq("status", "won")
         .order("created_at", { ascending: false })
         .limit(30),
-    ]);
-    setInvoices((invRes.data ?? []) as TaxInvoice[]);
-    setPayments((payRes.data ?? []) as InvoicePayment[]);
-    setWonQuotes((qRes.data ?? []) as Quote[]);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    reload();
-  }, [reload]);
+    ]).then(([invRes, payRes, qRes]) => {
+      if (!active) return;
+      setInvoices((invRes.data ?? []) as TaxInvoice[]);
+      setPayments((payRes.data ?? []) as InvoicePayment[]);
+      setWonQuotes((qRes.data ?? []) as Quote[]);
+      setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [tick]);
 
   const set = (key: keyof typeof EMPTY_FORM) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -158,13 +194,42 @@ export function RevenueView({ readOnly = false }: { readOnly?: boolean }) {
     reload();
   }
 
+  const AUTO_PAYMENT_MEMO = "상태를 입금완료로 바꿔 자동 기록";
+
+  /** 상태 변경. 입금완료로 바꾸면 남은 금액을 입금 내역에 자동 기록해 입금·미수금 집계와 어긋나지 않게 한다. */
   async function updateStatus(inv: TaxInvoice, status: TaxInvoiceStatus) {
     const supabase = createClient();
     const paid_at = status === "paid" ? (inv.paid_at ?? localDate()) : null;
-    await supabase
+    const { error } = await supabase
       .from("tax_invoices")
       .update({ status, paid_at, updated_at: new Date().toISOString() })
       .eq("id", inv.id);
+    if (error) {
+      setMsg(`상태 변경 실패: ${error.message}`);
+      return;
+    }
+    if (status === "paid") {
+      const alreadyPaid = payments
+        .filter((p) => p.invoice_id === inv.id)
+        .reduce((s, p) => s + Number(p.amount), 0);
+      const remaining = Number(inv.total_amount) - alreadyPaid;
+      if (remaining > 0) {
+        await supabase.from("invoice_payments").insert({
+          invoice_id: inv.id,
+          paid_date: paid_at,
+          amount: remaining,
+          kind: "other",
+          memo: AUTO_PAYMENT_MEMO,
+        });
+      }
+    } else if (inv.status === "paid") {
+      // 입금완료를 되돌리면 자동 기록분만 지운다 (손으로 넣은 입금은 그대로)
+      await supabase
+        .from("invoice_payments")
+        .delete()
+        .eq("invoice_id", inv.id)
+        .eq("memo", AUTO_PAYMENT_MEMO);
+    }
     reload();
   }
 
@@ -187,7 +252,7 @@ export function RevenueView({ readOnly = false }: { readOnly?: boolean }) {
   }
 
   // ── 집계 (취소 건 제외) ──────────────────────────────────
-  const active = useMemo(() => invoices.filter((i) => i.status !== "cancelled"), [invoices]);
+  const active = invoices.filter((i) => i.status !== "cancelled");
   const thisMonth = monthKey();
   const thisYear = thisMonth.slice(0, 4);
   const monthIssued = active
@@ -210,50 +275,18 @@ export function RevenueView({ readOnly = false }: { readOnly?: boolean }) {
     .filter((i) => i.issue_date.startsWith(thisYear))
     .reduce((s, i) => s + Number(i.total_amount), 0);
 
-  // 월별 × 거래처 적층 차트 (최근 12개월, 상위 4 거래처 + 기타)
-  const { chartData, series } = useMemo(() => {
-    const months = Array.from({ length: 12 }, (_, i) => monthKey(i - 11));
-    const totals = new Map<string, number>();
-    for (const inv of active) {
-      totals.set(inv.counterparty, (totals.get(inv.counterparty) ?? 0) + Number(inv.total_amount));
-    }
-    const top = [...totals.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
-      .map(([name]) => name);
-    const hasEtc = totals.size > top.length;
-    const series = hasEtc ? [...top, "기타"] : top;
+  // 월별 × 거래처 적층 차트
+  const { chartData, series } = buildRevenueChart(active);
 
-    const chartData = months.map((m) => {
-      const row: Record<string, string | number> = {
-        month: `${Number(m.slice(5))}월`,
-      };
-      for (const name of series) row[name] = 0;
-      for (const inv of active) {
-        if (!inv.issue_date.startsWith(m)) continue;
-        const key = top.includes(inv.counterparty) ? inv.counterparty : "기타";
-        if (key === "기타" && !hasEtc) continue;
-        row[key] = (Number(row[key]) || 0) + Math.round(Number(inv.total_amount) / 10_000);
-      }
-      return row;
-    });
-    return { chartData, series };
-  }, [active]);
+  // 거래처별 올해 합계 (React Compiler 가 메모하므로 useMemo 를 쓰지 않는다)
+  const byCounterpartyMap = new Map<string, number>();
+  for (const inv of active) {
+    if (!inv.issue_date.startsWith(thisYear)) continue;
+    byCounterpartyMap.set(inv.counterparty, (byCounterpartyMap.get(inv.counterparty) ?? 0) + Number(inv.total_amount));
+  }
+  const byCounterparty = [...byCounterpartyMap.entries()].sort((a, b) => b[1] - a[1]);
 
-  // 거래처별 올해 합계
-  const byCounterparty = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const inv of active) {
-      if (!inv.issue_date.startsWith(thisYear)) continue;
-      map.set(inv.counterparty, (map.get(inv.counterparty) ?? 0) + Number(inv.total_amount));
-    }
-    return [...map.entries()].sort((a, b) => b[1] - a[1]);
-  }, [active, thisYear]);
-
-  const counterpartyNames = useMemo(
-    () => [...new Set(invoices.map((i) => i.counterparty))],
-    [invoices],
-  );
+  const counterpartyNames = [...new Set(invoices.map((i) => i.counterparty))];
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
