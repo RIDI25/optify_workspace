@@ -8,7 +8,7 @@ import { DataTable, ExtLink, Notice, Section, Select } from "./ui";
 import { useSignedUrl } from "./use-signed-url";
 
 /** 결과 보기: 실행 → 질문 → 회차를 골라 답변 본문·판정·출처·캡처를 본다 */
-export function ResultsTab({ runs }: { runs: TrackerRun[] }) {
+export function ResultsTab({ runs, scope }: { runs: TrackerRun[]; scope: "geo" | "seo" }) {
   const [runId, setRunId] = useState(runs[0]?.run_id ?? "");
   const activeRun = runs.find((r) => r.run_id === runId) ?? runs[0];
   // 실행별로 불러온 결과. runId 가 다르면 아직 불러오는 중
@@ -20,7 +20,6 @@ export function ResultsTab({ runs }: { runs: TrackerRun[] }) {
   const [promptKey, setPromptKey] = useState("");
   const [rep, setRep] = useState<number>(1);
   const [rankKey, setRankKey] = useState("");
-  const [showRank, setShowRank] = useState(false);
   const [showCond, setShowCond] = useState(false);
 
   useEffect(() => {
@@ -85,39 +84,40 @@ export function ResultsTab({ runs }: { runs: TrackerRun[] }) {
               label: `${r.run_id} · ${STATUS_LABELS[r.status] ?? r.status} · 노출 ${r.present}/${r.observations}`,
             }))}
           />
-          <Select label="질문" value={activePromptKey} onChange={setPromptKey} options={prompts.map((p) => ({ value: p.key, label: p.label }))} />
-          <Select
-            label="회차"
-            value={String(current?.rep ?? 1)}
-            onChange={(v) => setRep(Number(v))}
-            options={reps.map((o) => ({ value: String(o.rep), label: `${o.rep}회` }))}
-          />
+          {scope === "geo" ? (
+            <>
+              <Select label="질문" value={activePromptKey} onChange={setPromptKey} options={prompts.map((p) => ({ value: p.key, label: p.label }))} />
+              <Select
+                label="회차"
+                value={String(current?.rep ?? 1)}
+                onChange={(v) => setRep(Number(v))}
+                options={reps.map((o) => ({ value: String(o.rep), label: `${o.rep}회` }))}
+              />
+            </>
+          ) : (
+            <div className="md:col-span-2">
+              {activeRank && <Select label="검색어 · 표면" value={activeRank.obs_id} onChange={setRankKey} options={rankOptions} />}
+            </div>
+          )}
         </div>
       </Section>
 
       {loading && <p className="text-sm text-muted">불러오는 중…</p>}
 
-      {rankObs.length > 0 && (
-        <Section
-          title={`검색 순위 결과 (${rankObs.length}건)`}
-          right={
-            <button onClick={() => setShowRank((v) => !v)} className="text-xs text-accent-deep hover:underline">
-              {showRank ? "접기" : "펼치기"}
-            </button>
-          }
-        >
-          {showRank && activeRank && (
-            <div className="space-y-3">
-              <Select label="검색어 · 표면" value={activeRank.obs_id} onChange={setRankKey} options={rankOptions} />
-              <RankDetail obs={activeRank} />
-            </div>
-          )}
+      {scope === "seo" && !loading && rankObs.length === 0 && (
+        <Notice kind="info">이 실행에는 검색 순위 관측이 없습니다. 검색 순위 표면이 켜진 실행을 고르세요.</Notice>
+      )}
+      {scope === "seo" && activeRank && (
+        <Section title={`검색 순위 결과 (${rankObs.length}건)`}>
+          <RankDetail obs={activeRank} />
         </Section>
       )}
 
-      {!loading && obs.length === 0 && rankObs.length === 0 && <Notice kind="info">이 실행에는 관측이 없습니다.</Notice>}
+      {scope === "geo" && !loading && obs.length === 0 && (
+        <Notice kind="info">이 실행에는 AI 관측이 없습니다. AI 표면이 켜진 실행을 고르세요.</Notice>
+      )}
 
-      {current && (
+      {scope === "geo" && current && (
         <>
           {current.error && <Notice kind="error">수집 오류: {current.error}</Notice>}
           {!current.present && !current.error && <Notice kind="warn">이 질문에는 AI 답변 블록이 뜨지 않았습니다.</Notice>}

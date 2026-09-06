@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import type { TrackerClient, TrackerRun } from "@/types/tracker";
@@ -10,6 +12,11 @@ import { ResultsTab } from "./results-tab";
 import { Notice } from "./ui";
 
 type Tab = "overview" | "trend" | "results";
+export type TrackingScope = "geo" | "seo";
+const SCOPES: { key: TrackingScope; tag: string; title: string; desc: string }[] = [
+  { key: "geo", tag: "GEO", title: "AI 노출", desc: "네이버·구글 AI 답변과 AI 4종(ChatGPT·Gemini·Perplexity·Claude)이 우리를 언급·인용하는지. 옵티파이 트래커가 매주 잽니다." },
+  { key: "seo", tag: "SEO", title: "검색 순위", desc: "네이버·구글 검색 결과에서 우리 홈페이지·블로그·플레이스가 몇 번째에 있는지. 옵티파이 트래커가 매주 잽니다." },
+];
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "개요" },
   { key: "trend", label: "추세" },
@@ -22,6 +29,9 @@ const TABS: { key: Tab; label: string }[] = [
  */
 export function TrackingView() {
   const { selectedClientId, selectedClient, loading: clientsLoading } = useClientContext();
+  const params = useSearchParams();
+  const scope: TrackingScope = params.get("view") === "seo" ? "seo" : "geo";
+  const scopeDef = SCOPES.find((s) => s.key === scope) ?? SCOPES[0];
   const [tab, setTab] = useState<Tab>("overview");
   // 고객사별로 불러온 상태. clientId 가 다르면 아직 불러오는 중
   const [data, setData] = useState<{ clientId: string; tc: TrackerClient | null; runs: TrackerRun[]; tableMissing: boolean }>({
@@ -65,12 +75,29 @@ export function TrackingView() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <p className="text-sm font-semibold text-accent">고객사 · {selectedClient?.name}</p>
-        <h1 className="text-xl font-bold text-ink">AI 노출 · 검색 순위</h1>
-        <p className="mt-1 text-sm text-muted">
-          옵티파이 트래커가 매주 잰 결과. 네이버·구글 AI 답변과 AI 4종(ChatGPT·Gemini·Perplexity·Claude)의 언급·인용, 네이버·구글 검색 순위.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-accent">고객사 · {selectedClient?.name}</p>
+          <h1 className="text-xl font-bold text-ink">
+            <span className="mr-2 rounded-md bg-tint px-2 py-0.5 text-sm font-bold text-accent-deep">{scopeDef.tag}</span>
+            {scopeDef.title}
+          </h1>
+          <p className="mt-1 text-sm text-muted">{scopeDef.desc}</p>
+        </div>
+        <div className="flex gap-1 rounded-full border border-border bg-surface p-0.5">
+          {SCOPES.map((s) => (
+            <Link
+              key={s.key}
+              href={`/tracking?view=${s.key}`}
+              className={[
+                "rounded-full px-3 py-1 text-xs font-semibold",
+                s.key === scope ? "bg-accent-deep text-white" : "text-muted hover:text-ink",
+              ].join(" ")}
+            >
+              {s.tag} · {s.title}
+            </Link>
+          ))}
+        </div>
       </div>
 
       <div className="flex gap-2 border-b border-border">
@@ -102,9 +129,9 @@ export function TrackingView() {
       ) : tab === "overview" ? (
         <OverviewTab key={tc.client_id} tc={tc} runs={runs} />
       ) : tab === "trend" ? (
-        <TrendTab key={tc.client_id} clientId={tc.client_id} clientName={tc.name} />
+        <TrendTab key={`${tc.client_id}-${scope}`} clientId={tc.client_id} clientName={tc.name} scope={scope} />
       ) : (
-        <ResultsTab key={tc.client_id} runs={runs} />
+        <ResultsTab key={`${tc.client_id}-${scope}`} runs={runs} scope={scope} />
       )}
     </div>
   );

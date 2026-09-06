@@ -54,8 +54,8 @@ AI 비서(우하단 위젯 → `/api/assistant`, Claude Opus 5 tool-use 루프, 
 결과를 Supabase 에 올린다(`tracker_*` 테이블 7개 + `tracker_jobs` 대기열 + Storage `tracker` 버킷, `clients.tracker_slug` 로 연결).
 /tracking 화면(개요·추세·결과 보기, `components/tracking/`, 라벨·계산은 `lib/tracker.ts`) + 대시보드 위젯(`components/dashboard/tracker-summary.tsx`).
 '지금 실행'·고객사 등록 마법사(B단계)와 콘텐츠 발행→조치 기록·키워드→질문·리포트 섹션·AI 비서 도구(C단계)는 아직 맥 앱에 있다.
-사이드바 IA(2026-09-06 재편, `lib/nav.ts` NAV_GROUPS): 대시보드 → 고객사 업무(왼쪽 메뉴 안의 고객사 선택 + 진행중 계약 칩, 콘텐츠 1~4 → 성과: 추적·월간 리포트) → 영업(리드·SEO 진단·견적서) → 회계(매출·장부) → 팀(업무·스케줄·데일리) → 관리(설정).
-계약 서비스(`client_services`)에 없는 업무는 흐리게만 표시하고 숨기지 않는다(기능 변화 없음). 상단 고객사 탭(client-tabs)은 제거.
+사이드바 IA(2026-09-06 재편, `lib/nav.ts` NAV_BLOCKS): 두 블록으로 시각 구분 — 🏢 옵티파이 내부 업무(대시보드·영업·회계·팀·관리, 회색 카드) / 🤝 고객사 업무(파란 틴트 카드: 고객사 선택 + 진행중 계약 칩, 콘텐츠 1~4 접이식(localStorage 기억), SEO=/tracking?view=seo, GEO=/tracking?view=geo, 통합리포트=/reports). 계약 서비스(`client_services`)에 없는 업무는 흐리게만 표시하고 숨기지 않는다(기능 변화 없음). 상단 고객사 탭(client-tabs)은 제거.
+/tracking 은 `view` 쿼리로 같은 데이터를 GEO(AI 노출)·SEO(검색 순위) 관점으로 나눠 보여 준다 (개요 탭은 공통).
 DB: `supabase/migrations/0001~0025`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries, 0025=tracker_* 트래커 연동).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 

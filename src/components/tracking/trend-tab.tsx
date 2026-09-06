@@ -51,9 +51,12 @@ type RankLite = Pick<
 export function TrendTab({
   clientId,
   clientName,
+  scope,
 }: {
   clientId: string;
   clientName: string;
+  /** geo = AI 노출, seo = 검색 순위 */
+  scope: "geo" | "seo";
 }) {
   // weekly 가 null 이면 아직 불러오는 중 (고객사가 바뀌면 부모가 key 로 다시 그린다)
   const [weekly, setWeekly] = useState<TrackerWeeklyMetric[] | null>(null);
@@ -140,10 +143,20 @@ export function TrendTab({
   const rankObs = rankKey && rankState.key === rankKey ? rankState.rows : [];
 
   if (weekly === null) return <p className="text-sm text-muted">불러오는 중…</p>;
-  if (weekly.length === 0) {
+  if (scope === "seo") {
+    if (rank.length === 0 || !rankLatest) {
+      return <Notice kind="info">아직 검색 순위 집계가 없습니다. 트래커에 검색어를 등록하고 실행하면 나타납니다.</Notice>;
+    }
+    return (
+      <div className="space-y-5">
+        <RankSection rank={rank} latest={rankLatest} prev={rankPrev} rankObs={rankObs} />
+      </div>
+    );
+  }
+  if (weekly.length === 0 || geo.length === 0) {
     return (
       <Notice kind="info">
-        아직 집계된 주가 없습니다. 실행이 끝나면 자동으로 판정·집계돼 여기에 나타납니다.
+        아직 AI 노출 집계가 없습니다. 실행이 끝나면 자동으로 판정·집계돼 여기에 나타납니다.
       </Notice>
     );
   }
@@ -173,13 +186,7 @@ export function TrendTab({
 
   return (
     <div className="space-y-5">
-      {rank.length > 0 && rankLatest && (
-        <RankSection rank={rank} latest={rankLatest} prev={rankPrev} rankObs={rankObs} />
-      )}
-
-      {geo.length === 0 ? (
-        <Notice kind="info">AI 표면 집계가 아직 없습니다.</Notice>
-      ) : (
+      {(
         <>
           <Section title="AI 노출">
             <div className="flex flex-wrap items-end gap-4">
