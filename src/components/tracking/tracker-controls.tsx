@@ -168,11 +168,13 @@ export function TrackerControls({
             네이버·구글은 항목당 10~20초, AI 4종은 질문당 30초~2분 걸립니다. 결과는 아래 요청 목록과 탭에 나타납니다.
           </p>
         </div>
-        <div className={["rounded-md px-2.5 py-1 text-xs", workerOk ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"].join(" ")}>
+        <div className={["rounded-md px-2.5 py-1 text-xs", workerOk || pending ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"].join(" ")}>
           {worker
             ? workerOk
-              ? `맥 워커 · ${ago(worker.last_seen, now)} 확인`
-              : `맥 워커 응답 없음 · 마지막 ${ago(worker.last_seen, now)} — 맥이 켜져 있고 bin/install_schedule.command 가 등록됐는지 확인`
+              ? `맥 워커 · ${ago(worker.last_seen, now)} 확인${worker.note?.startsWith("작업 처리 중") ? " · 작업 처리 중" : ""}`
+              : pending
+                ? `맥 워커가 요청을 처리하는 중 · 마지막 확인 ${ago(worker.last_seen, now)}`
+                : `맥 워커 응답 없음 · 마지막 ${ago(worker.last_seen, now)} — 맥이 켜져 있고 bin/install_schedule.command 가 등록됐는지 확인`
             : "맥 워커 기록 없음 — 0029 실행 후 맥에서 bin/install_schedule.command"}
         </div>
       </div>
