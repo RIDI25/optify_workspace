@@ -27,8 +27,8 @@ const TINT = "#EFF6FF";
 
 const s = StyleSheet.create({
   page: { padding: 40, fontFamily: "Pretendard", color: INK, fontSize: 9.5, lineHeight: 1.5 },
-  title: { fontSize: 20, fontWeight: "bold", color: DEEP },
-  sub: { fontSize: 10, color: MUTED, marginTop: 4 },
+  title: { fontSize: 20, fontWeight: "bold", color: DEEP, lineHeight: 1.3, marginBottom: 6 },
+  sub: { fontSize: 10, color: MUTED, marginTop: 2 },
   bar: { height: 3, backgroundColor: ACCENT, marginTop: 10, marginBottom: 14 },
   h2: { fontSize: 12, fontWeight: "bold", color: DEEP, marginTop: 14, marginBottom: 6 },
   p: { marginBottom: 4 },
