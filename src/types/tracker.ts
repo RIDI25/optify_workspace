@@ -155,3 +155,27 @@ export interface TrackerReport {
   generated_at: string | null;
   synced_at: string;
 }
+
+/** 0025 tracker_jobs — 워크스페이스 → 맥 워커 실행 요청 */
+export interface TrackerJob {
+  id: string;
+  client_id: string | null;
+  kind: "run" | "settings" | "report" | "sync" | string;
+  params: Record<string, unknown>;
+  status: "queued" | "running" | "done" | "failed";
+  requested_by: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  result: Record<string, unknown> | null;
+  log: string | null;
+}
+
+/** 0029 tracker_worker — 맥 워커 살아 있음 */
+export interface TrackerWorker {
+  id: string;
+  last_seen: string | null;
+  host: string | null;
+  version: string | null;
+  note: string | null;
+}

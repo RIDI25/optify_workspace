@@ -11,6 +11,7 @@ import { OverviewTab } from "./overview-tab";
 import { TrendTab } from "./trend-tab";
 import { ResultsTab } from "./results-tab";
 import { Notice } from "./ui";
+import { TrackerControls } from "./tracker-controls";
 
 type Tab = "overview" | "trend" | "results";
 export type TrackingScope = "geo" | "seo";
@@ -34,6 +35,7 @@ export function TrackingView({ scope: fixedScope }: { scope?: TrackingScope } = 
   const scope: TrackingScope = fixedScope ?? (params.get("view") === "seo" ? "seo" : "geo");
   const scopeDef = SCOPES.find((s) => s.key === scope) ?? SCOPES[0];
   const [tab, setTab] = useState<Tab>("overview");
+  const [tick, setTick] = useState(0); // 맥 워커가 요청을 끝내면 +1 → 다시 읽기
   // 고객사별로 불러온 상태. clientId 가 다르면 아직 불러오는 중
   const [data, setData] = useState<{
     clientId: string;
@@ -77,7 +79,7 @@ export function TrackingView({ scope: fixedScope }: { scope?: TrackingScope } = 
     return () => {
       active = false;
     };
-  }, [selectedClientId]);
+  }, [selectedClientId, tick]);
   const loading = data.clientId !== selectedClientId;
   const { tc, runs, tableMissing, runsError } = data;
 
@@ -114,6 +116,10 @@ export function TrackingView({ scope: fixedScope }: { scope?: TrackingScope } = 
         </div>
         )}
       </div>
+
+      {!loading && !tableMissing && (
+        <TrackerControls key={`${selectedClientId}-${scope}-${tc?.synced_at ?? ""}`} clientId={selectedClientId} scope={scope} tc={tc} onJobDone={() => setTick((n) => n + 1)} />
+      )}
 
       <div className="flex gap-2 border-b border-border">
         {TABS.map((t) => (

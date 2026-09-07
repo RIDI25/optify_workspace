@@ -47,6 +47,8 @@ export interface Client extends Timestamps {
   place_url?: string | null;
   contact_name?: string | null;
   contact_phone?: string | null;
+  /** 0029: 서치콘솔·GA4 자동 갱신 (크론) */
+  google_auto_fetch?: boolean;
 }
 
 /** 0028: 고객사 콘텐츠 기준 — 생성 엔진이 시스템 프롬프트에 넣는다 */

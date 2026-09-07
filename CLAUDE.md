@@ -76,7 +76,9 @@ AI 비서(우하단 위젯 → `/api/assistant`, Claude Opus 5 tool-use 루프, 
 ⑩ 트래커 화면은 최근 12주만, 1,000행 단위로 나눠 읽고 조회 오류를 '데이터 없음'과 구분(`lib/tracker.ts` fetchAllRows).
 ⑪ SSRF: `lib/url-guard.ts` 가 IPv6 매핑·DNS 결과·리다이렉트 단계까지 검사(`isSafePublicUrlResolved`, `safeFetch` — WP 호출도 사용). 이미지 생성·비서 API 는 프로필 있는 계정만.
 검증: `npm test`(vitest — text·publish-stats·url-guard), `npm run lint`, `npx tsc --noEmit`, `npm run build` 모두 통과가 커밋 조건.
-DB: `supabase/migrations/0001~0028`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries, 0025=tracker_* 트래커 연동, 0026=보안·정합성 강화, 0027=승인 트리거 보완 + 권한 통일, 0028=회사 정보·월 약정·client_briefs). **0002 는 재실행 금지**(정책 전부 삭제).
+트래커 B단계(2026-09-07): 고객사 › SEO·GEO 탭 위의 `components/tracking/tracker-controls.tsx` — '지금 실행'(tracker_jobs kind run, 표면=그 탭의 켜진 표면)과 '자동 실행 설정'(kind settings: 매주 자동 on/off + 표면 체크) 요청을 넣고 10초마다 결과를 본다. 맥 워커(`tracker jobs`, 1분)가 처리하고 `tracker_worker.last_seen`(0029)으로 살아 있음을 표시.
+서치콘솔·GA4 자동 갱신: `clients.google_auto_fetch`(0029) + `/api/reports/cron`(매일 KST 00:30, 월요일=이번 달 갱신·2일=지난달 확정, vercel.json) — 화면의 '자동 갱신' 체크. 미들웨어 공개 경로에 등록.
+DB: `supabase/migrations/0001~0029`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries, 0025=tracker_* 트래커 연동, 0026=보안·정합성 강화, 0027=승인 트리거 보완 + 권한 통일, 0028=회사 정보·월 약정·client_briefs, 0029=google_auto_fetch·tracker_worker). **0002 는 재실행 금지**(정책 전부 삭제).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)

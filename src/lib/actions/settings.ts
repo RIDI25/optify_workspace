@@ -18,6 +18,8 @@ interface ClientPatch {
   place_url?: string | null;
   contact_name?: string | null;
   contact_phone?: string | null;
+  // 0029
+  google_auto_fetch?: boolean;
 }
 
 /** 클라이언트 저장(신규 insert 또는 update). owner만 — RLS로 강제. */

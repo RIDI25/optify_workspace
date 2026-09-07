@@ -5,6 +5,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { createClient } from "@/lib/supabase/client";
 import { useClientContext } from "@/components/providers/client-context";
 import { saveReport } from "@/lib/actions/reports";
+import { saveClient } from "@/lib/actions/settings";
 import { addTopicToPlan, saveKeywordFromGsc } from "@/lib/actions/keywords";
 import { channelLabel } from "@/lib/channels";
 import { classifyOpportunities, type GscQueryRow } from "@/lib/gsc-opportunities";
@@ -31,8 +32,10 @@ type SavedRow = { year_month: string; gsc_snapshot: GscData | null; ga4_snapshot
  * (2026-09-06: 네이버 입력·스크린샷 분석·AI 소견·PDF 내보내기는 뺐다. 불러온 달은 자동 저장돼 월별 추이가 쌓인다.)
  */
 export function GoogleReportView() {
-  const { selectedClientId, selectedClient } = useClientContext();
+  const { selectedClientId, selectedClient, refreshClients } = useClientContext();
   const [ym, setYm] = useState(currentYm());
+  const [autoBusy, setAutoBusy] = useState(false);
+  const [autoMsg, setAutoMsg] = useState("");
   const [pStart, setPStart] = useState(() => `${currentYm()}-01`);
   const [pEnd, setPEnd] = useState(() => ymdLocal(new Date()));
   const [data, setData] = useState<{ key: string; gsc: GscData | null; ga4: Ga4Data | null; savedAt: string | null } | null>(null);
@@ -146,6 +149,23 @@ export function GoogleReportView() {
       세션: r.ga4_snapshot?.sessions ?? 0,
     }));
   const connected = !!(selectedClient?.gsc_site_url || selectedClient?.ga4_property_id);
+  const autoOn = !!selectedClient?.google_auto_fetch;
+  const autoAvailable = selectedClient ? "google_auto_fetch" in selectedClient : false; // 0029 컬럼이 있을 때만
+
+  async function toggleAuto() {
+    if (!selectedClientId) return;
+    setAutoBusy(true);
+    setAutoMsg("");
+    const r = await saveClient(selectedClientId, { google_auto_fetch: !autoOn });
+    setAutoBusy(false);
+    if (!r.ok) {
+      setAutoMsg(`저장 실패: ${r.error}`);
+      return;
+    }
+    await refreshClients();
+    setAutoMsg(!autoOn ? "자동 갱신을 켰습니다." : "자동 갱신을 껐습니다.");
+    setTimeout(() => setAutoMsg(""), 2000);
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
@@ -164,9 +184,22 @@ export function GoogleReportView() {
             disabled={loading || !connected}
             className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
           >
-            {loading ? "불러오는 중…" : "구글 자료 불러오기"}
+            {loading ? "불러오는 중…" : "지금 불러오기"}
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent/30 bg-tint/30 px-4 py-3">
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={autoOn} disabled={!autoAvailable || autoBusy || !connected} onChange={toggleAuto} className="accent-[#2563EB]" />
+          자동 갱신
+        </label>
+        <span className="text-xs text-muted">
+          {autoAvailable
+            ? "켜 두면 매주 월요일 새벽에 이번 달 자료를 다시 불러오고, 매월 2일에 지난달을 확정 저장합니다 (Vercel 크론)."
+            : "0029_tracker_controls.sql 을 실행하면 자동 갱신을 켤 수 있습니다."}
+        </span>
+        {autoMsg && <span className="text-xs text-accent-deep">{autoMsg}</span>}
       </div>
 
       {!connected && (
