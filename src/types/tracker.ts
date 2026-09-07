@@ -179,3 +179,17 @@ export interface TrackerWorker {
   version: string | null;
   note: string | null;
 }
+
+/** 0030 tracker_insights — 측정별 Claude 추론 */
+export interface TrackerInsight {
+  id: string;
+  client_id: string;
+  scope: "geo" | "seo" | string;
+  run_id: string | null;
+  model: string | null;
+  insight: string;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  created_by: string | null;
+  created_at: string;
+}

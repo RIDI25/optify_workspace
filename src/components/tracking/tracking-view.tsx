@@ -12,14 +12,16 @@ import { TrendTab } from "./trend-tab";
 import { ResultsTab } from "./results-tab";
 import { Notice } from "./ui";
 import { TrackerControls } from "./tracker-controls";
+import { RecordsTab } from "./records-tab";
 
-type Tab = "overview" | "trend" | "results";
+type Tab = "records" | "overview" | "trend" | "results";
 export type TrackingScope = "geo" | "seo";
 const SCOPES: { key: TrackingScope; tag: string; title: string; desc: string }[] = [
   { key: "geo", tag: "GEO", title: "AI 노출", desc: "네이버·구글 AI 답변과 AI 4종(ChatGPT·Gemini·Perplexity·Claude)이 우리를 언급·인용하는지. 옵티파이 트래커가 매주 잽니다." },
   { key: "seo", tag: "SEO", title: "검색 순위", desc: "네이버·구글 검색 결과에서 우리 홈페이지·블로그·플레이스가 몇 번째에 있는지. 옵티파이 트래커가 매주 잽니다." },
 ];
 const TABS: { key: Tab; label: string }[] = [
+  { key: "records", label: "측정 기록" },
   { key: "overview", label: "개요" },
   { key: "trend", label: "추세" },
   { key: "results", label: "결과 보기" },
@@ -34,7 +36,7 @@ export function TrackingView({ scope: fixedScope }: { scope?: TrackingScope } = 
   const params = useSearchParams();
   const scope: TrackingScope = fixedScope ?? (params.get("view") === "seo" ? "seo" : "geo");
   const scopeDef = SCOPES.find((s) => s.key === scope) ?? SCOPES[0];
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("records");
   const [tick, setTick] = useState(0); // 맥 워커가 요청을 끝내면 +1 → 다시 읽기
   // 고객사별로 불러온 상태. clientId 가 다르면 아직 불러오는 중
   const [data, setData] = useState<{
@@ -151,6 +153,8 @@ export function TrackingView({ scope: fixedScope }: { scope?: TrackingScope } = 
           이 고객사는 아직 트래커에 연결되지 않았습니다. 맥의 옵티파이 트래커 앱에서 고객사를 등록하고 한 번 실행(또는 설정 → 워크스페이스로 올리기)하면
           여기에 나타납니다.
         </Notice>
+      ) : tab === "records" ? (
+        <RecordsTab key={`${tc.client_id}-${scope}`} clientId={tc.client_id} scope={scope} runs={runs} />
       ) : tab === "overview" ? (
         <OverviewTab key={tc.client_id} tc={tc} runs={runs} />
       ) : tab === "trend" ? (

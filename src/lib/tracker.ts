@@ -217,3 +217,9 @@ export async function fetchAllRows<T>(
   }
   return { rows, error: null };
 }
+
+/** 어떤 측정(run)이 이 관점(geo/seo)의 결과를 담고 있는지 — 표면 목록으로 판단 */
+export function runHasScope(run: { surfaces: string[] }, scope: "geo" | "seo"): boolean {
+  const s = run.surfaces ?? [];
+  return scope === "seo" ? s.some((x) => RANK_SURFACES.has(x)) : s.some((x) => !RANK_SURFACES.has(x));
+}

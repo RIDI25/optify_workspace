@@ -15,3 +15,6 @@ export const GENERATION_FALLBACKS = [{ model: "claude-opus-4-8" }];
 export function createAnthropic() {
   return new Anthropic();
 }
+
+/** 트래커 추론(측정 해석)에 쓰는 모델 — 결정 21: 항상 최신 최고급. 측정 표면 모델과 별개. */
+export const REASONING_MODEL = "claude-fable-5-1";

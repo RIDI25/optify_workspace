@@ -78,7 +78,9 @@ AI 비서(우하단 위젯 → `/api/assistant`, Claude Opus 5 tool-use 루프, 
 검증: `npm test`(vitest — text·publish-stats·url-guard), `npm run lint`, `npx tsc --noEmit`, `npm run build` 모두 통과가 커밋 조건.
 트래커 B단계(2026-09-07): 고객사 › SEO·GEO 탭 위의 `components/tracking/tracker-controls.tsx` — '지금 실행'(tracker_jobs kind run, 표면=그 탭의 켜진 표면)과 '자동 실행 설정'(kind settings: 매주 자동 on/off + 표면 체크) 요청을 넣고 10초마다 결과를 본다. 맥 워커(`tracker jobs`, 1분)가 처리하고 `tracker_worker.last_seen`(0029)으로 살아 있음을 표시.
 서치콘솔·GA4 자동 갱신: `clients.google_auto_fetch`(0029) + `/api/reports/cron`(매일 KST 00:30, 월요일=이번 달 갱신·2일=지난달 확정, vercel.json) — 화면의 '자동 갱신' 체크. 미들웨어 공개 경로에 등록.
-DB: `supabase/migrations/0001~0029`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries, 0025=tracker_* 트래커 연동, 0026=보안·정합성 강화, 0027=승인 트리거 보완 + 권한 통일, 0028=회사 정보·월 약정·client_briefs, 0029=google_auto_fetch·tracker_worker). **0002 는 재실행 금지**(정책 전부 삭제).
+측정 기록·추론·PDF(2026-09-07): SEO·GEO 탭 기본 보기 = `components/tracking/records-tab.tsx` — 날짜·시간별 측정 목록 → 고른 측정의 KPI·표면별 그래프·질문(검색어)별 표(`lib/tracker-digest.ts` 순수 함수로 요약, 서버·PDF 공용).
+'추론 생성' → `/api/tracker/insight` (Claude `REASONING_MODEL`=claude-fable-5-1, betas+fallbacks, 자료 다이제스트만 근거) → `tracker_insights`(0030). '리포트 PDF' → `/api/tracker/report-pdf` (@react-pdf/renderer, `lib/export/tracker-report-pdf.tsx`: 요약·표·직전 대비·12주 추이·추론, 고객사 전달용). 측정 묶음 로더는 `lib/tracker-server/load-run.ts`.
+DB: `supabase/migrations/0001~0030`. DDL은 SQL Editor에서 수동 실행 (0013=quotes, 0014=leads·app_settings, 0015=seo_diagnoses, 0016=deal_channels, 0017=tax_invoices, 0018=invoice_payments, 0019=client_services, 0020=channel_connection, 0021=tasks·task_templates, 0022=events, 0023=매출·영업 조회 팀 확대, 0024=ledger_entries, 0025=tracker_* 트래커 연동, 0026=보안·정합성 강화, 0027=승인 트리거 보완 + 권한 통일, 0028=회사 정보·월 약정·client_briefs, 0029=google_auto_fetch·tracker_worker, 0030=tracker_insights). **0002 는 재실행 금지**(정책 전부 삭제).
 각 기능 완료 시 빌드·타입체크 통과 후 커밋.
 
 ## 셋업 (Supabase)
