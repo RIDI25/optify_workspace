@@ -168,7 +168,7 @@ export function RecordsTab({ clientId, scope, runs }: { clientId: string; scope:
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr]">
       {/* 날짜·시간별 측정 목록 */}
       <section className="rounded-lg border border-border bg-surface p-2">
-        <p className="px-2 py-1 text-xs font-semibold text-muted">측정 기록 · {scoped.length}건</p>
+        <p className="px-2 py-1 text-xs font-semibold text-muted">측정 기록 · {scoped.length}건 <span className="font-normal">(한국 시간)</span></p>
         <ul className="max-h-[70vh] space-y-0.5 overflow-y-auto">
           {scoped.map((r) => {
             const t = fmtDateTime(r.started_at);
@@ -189,7 +189,7 @@ export function RecordsTab({ clientId, scope, runs }: { clientId: string; scope:
                     </span>
                   </span>
                   <span className="block truncate text-[11px] text-muted">
-                    {scope === "seo" ? `순위 ${(r.conditions as { rank_observations?: number })?.rank_observations ?? ""}` : `관측 ${r.observations} · 노출 ${r.present}`}
+                    {scope === "seo" ? "검색 순위 측정" : `관측 ${r.observations} · 노출 ${r.present}`}
                     {r.errors ? ` · 오류 ${r.errors}` : ""}
                     {hasIns ? " · 추론 있음" : ""}
                   </span>
