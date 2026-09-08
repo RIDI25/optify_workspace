@@ -11,7 +11,7 @@ const SCOPE_SURFACES: Record<TrackingScope, string[]> = {
   geo: ["naver_aib", "google_aio", "google_aimode"],
 };
 const LLM_SURFACES = ["chatgpt", "gemini", "perplexity", "claude"];
-const KIND_LABEL: Record<string, string> = { run: "측정 실행", settings: "설정 저장", report: "리포트 생성", sync: "다시 올리기" };
+const KIND_LABEL: Record<string, string> = { run: "측정 실행", settings: "설정 저장", report: "리포트 생성", sync: "다시 올리기", targets: "키워드·질문 반영" };
 const STATUS_LABEL: Record<string, string> = { queued: "대기", running: "실행 중", done: "완료", failed: "실패" };
 const STATUS_CLS: Record<string, string> = {
   queued: "bg-subtle text-muted",

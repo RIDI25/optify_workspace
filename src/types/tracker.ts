@@ -160,7 +160,7 @@ export interface TrackerReport {
 export interface TrackerJob {
   id: string;
   client_id: string | null;
-  kind: "run" | "settings" | "report" | "sync" | string;
+  kind: "run" | "settings" | "report" | "sync" | "targets" | string;
   params: Record<string, unknown>;
   status: "queued" | "running" | "done" | "failed";
   requested_by: string | null;
@@ -192,4 +192,30 @@ export interface TrackerInsight {
   output_tokens: number | null;
   created_by: string | null;
   created_at: string;
+}
+
+/** 0031 tracker_targets — 고객사가 요청한 측정 키워드·질문. 워크스페이스가 쓰고, 맥이 kind=targets 로 반영한다 */
+export interface TargetQuestion {
+  text: string;
+  intent: string | null; // 정보형 / 지역형 / 검색형 / 추천형 / null(트래커가 추정)
+}
+export interface TrackerTargets {
+  client_id: string;
+  main_keywords: string[];
+  sub_keywords: string[];
+  questions: TargetQuestion[];
+  updated_by: string | null;
+  updated_at: string;
+}
+
+/** 0031 tracker_keywords — 맥 트래커 검색어 스냅샷 (읽기 전용) */
+export interface TrackerKeyword {
+  client_id: string;
+  keyword_id: string;
+  text: string;
+  tier: "main" | "sub" | null;
+  intent: string | null;
+  target_url: string | null;
+  active: boolean;
+  added: string | null;
 }

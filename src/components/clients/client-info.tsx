@@ -8,6 +8,7 @@ import { useClientContext } from "@/components/providers/client-context";
 import { ClientServicesSection } from "@/components/settings/client-services";
 import { ChannelAccountsSection, ClientCard, DangerZone, WordpressTab } from "@/components/clients/client-info-sections";
 import { ClientBriefCard } from "@/components/clients/client-brief";
+import { TrackerTargetsCard } from "@/components/clients/tracker-targets-card";
 import { clientPath } from "@/lib/nav";
 import type { Profile } from "@/types/database";
 
@@ -63,9 +64,9 @@ export function ClientInfo({ id }: { id: string }) {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-bold text-ink">추적 설정 (트래커)</h2>
-        <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">
-          AI 질문·검색어·경쟁사는 아직 맥의 옵티파이 트래커 앱에서 고칩니다. 측정 결과는{" "}
+        <h2 className="text-sm font-bold text-ink">측정 키워드·질문 (트래커)</h2>
+        <p className="text-xs text-muted">
+          고객사가 요청한 검색어와 AI 질문. 메인 키워드 5개, 서브 키워드 20개, 질문 20개까지. 저장하면 맥 트래커 설정에 반영되고 다음 측정부터 이 목록으로 잽니다. 경쟁사·별칭은 아직 맥의 트래커 앱에서 고칩니다. 결과는{" "}
           <Link href={clientPath(client.id, "geo")} className="text-accent-deep hover:underline">
             GEO
           </Link>{" "}
@@ -74,7 +75,8 @@ export function ClientInfo({ id }: { id: string }) {
             SEO
           </Link>{" "}
           탭에서 봅니다.
-        </div>
+        </p>
+        <TrackerTargetsCard key={client.id} clientId={client.id} />
       </section>
 
       {!client.is_internal && (
