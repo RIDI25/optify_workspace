@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { Suspense } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { CLIENT_TABS, NAV_ITEMS, clientPath, parseClientPath, type NavItem } from "@/lib/nav";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { CLIENT_TABS, CONTENT_VIEWS, NAV_ITEMS, clientPath, parseClientPath, type NavItem } from "@/lib/nav";
 import { useClientContext } from "@/components/providers/client-context";
 import type { Role } from "@/types/database";
 
 /**
  * 왼쪽 메뉴 — 질문 다섯 개(오늘·고객사·영업·정산·일정) + 보조.
- * 고객사 카드 안에 있으면 '고객사' 아래에 고객사 선택과 탭(개요·콘텐츠·SEO·GEO·서치콘솔·GA4·기본정보)이 펼쳐진다.
+ * 고객사 카드 안에 있으면 '고객사' 아래에 고객사 선택과 탭(개요·콘텐츠·SEO·GEO·서치콘솔·GA4·기본정보)이 펼쳐지고,
+ * 콘텐츠 아래에는 다섯 보기(작업 목록·플랜·글 만들기·라이브러리·키워드 리서치)가 항상 보인다.
  */
 function NavLink({
   item,
@@ -40,6 +41,36 @@ function NavLink({
       <span className="truncate">{item.label}</span>
     </Link>
   );
+}
+
+/** 콘텐츠 탭 아래 다섯 보기. current 가 없으면 강조 없이 */
+function ContentViewList({ clientId, current, onNavigate }: { clientId: string; current: string | null; onNavigate?: () => void }) {
+  return (
+    <div className="mb-0.5 ml-4 border-l border-accent/25 pl-1.5">
+      {CONTENT_VIEWS.map((v) => {
+        const active = current === v.key;
+        return (
+          <Link
+            key={v.key}
+            href={clientPath(clientId, "content", `view=${v.key}`)}
+            onClick={onNavigate}
+            title={v.hint}
+            className={["flex items-center rounded-md px-2 py-0.5 text-[12px]", active ? "bg-surface font-semibold text-accent-deep shadow-sm" : "text-muted hover:bg-surface/80 hover:text-ink"].join(" ")}
+          >
+            {v.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 주소의 ?view= 로 지금 보기를 강조 (useSearchParams 는 Suspense 안에서만) */
+function ContentViewLinks({ clientId, inContentTab, onNavigate }: { clientId: string; inContentTab: boolean; onNavigate?: () => void }) {
+  const params = useSearchParams();
+  const raw = params.get("view");
+  const current = inContentTab ? (CONTENT_VIEWS.some((v) => v.key === raw) ? raw : "work") : null;
+  return <ContentViewList clientId={clientId} current={current} onNavigate={onNavigate} />;
 }
 
 /** 고객사 카드 안: 고객사 선택 + 탭 */
@@ -73,22 +104,28 @@ function ClientBlock({ clientId, tab, onNavigate }: { clientId: string; tab: str
       {CLIENT_TABS.map((t) => {
         const active = tab === t.key;
         return (
-          <Link
-            key={t.key}
-            href={clientPath(clientId, t.key)}
-            onClick={onNavigate}
-            className={[
-              "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px]",
-              active ? "bg-surface font-semibold text-accent-deep shadow-sm ring-1 ring-accent/30" : "text-ink hover:bg-surface/80",
-            ].join(" ")}
-          >
-            {t.icon && (
-              <span className="w-4 text-center text-[12px]" aria-hidden>
-                {t.icon}
-              </span>
+          <div key={t.key}>
+            <Link
+              href={clientPath(clientId, t.key)}
+              onClick={onNavigate}
+              className={[
+                "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[13px]",
+                active ? "bg-surface font-semibold text-accent-deep shadow-sm ring-1 ring-accent/30" : "text-ink hover:bg-surface/80",
+              ].join(" ")}
+            >
+              {t.icon && (
+                <span className="w-4 text-center text-[12px]" aria-hidden>
+                  {t.icon}
+                </span>
+              )}
+              {t.label}
+            </Link>
+            {t.key === "content" && (
+              <Suspense fallback={<ContentViewList clientId={clientId} current={null} onNavigate={onNavigate} />}>
+                <ContentViewLinks clientId={clientId} inContentTab={active} onNavigate={onNavigate} />
+              </Suspense>
             )}
-            {t.label}
-          </Link>
+          </div>
         );
       })}
     </div>

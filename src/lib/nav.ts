@@ -54,6 +54,16 @@ export const CLIENT_TABS: ClientTab[] = [
   { key: "info", label: "기본정보" },
 ];
 
+/** 콘텐츠 탭 안의 보기 (?view=). 왼쪽 메뉴 콘텐츠 아래에도 그대로 펼친다 (2026-09-18: 키워드 리서치를 못 찾는다는 요청) */
+export type ContentView = "work" | "plans" | "generate" | "library" | "keywords";
+export const CONTENT_VIEWS: { key: ContentView; label: string; hint: string }[] = [
+  { key: "work", label: "작업 목록", hint: "다섯 상태 · 다음 행동" },
+  { key: "plans", label: "플랜 · 일정", hint: "기획 → 예정일 → 외부 글 등록" },
+  { key: "generate", label: "글 만들기", hint: "AI 생성 → 수정 → 완료 처리" },
+  { key: "library", label: "라이브러리 · 검수", hint: "승인 · 발행 기록" },
+  { key: "keywords", label: "키워드 리서치", hint: "네이버·구글 키워드 분석 — 주제 발굴" },
+];
+
 export function clientPath(clientId: string, tab: ClientTab["key"] = "overview", query?: string): string {
   return `/clients/${clientId}/${tab}${query ? `?${query}` : ""}`;
 }

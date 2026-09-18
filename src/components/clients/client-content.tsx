@@ -7,16 +7,10 @@ import { GenerateView } from "@/components/generate/generate-view";
 import { LibraryView } from "@/components/library/library-view";
 import { KeywordsView } from "@/components/keywords/keywords-view";
 import { ContentWorkList } from "@/components/clients/content-work-list";
-import { parseClientPath } from "@/lib/nav";
+import { CONTENT_VIEWS, parseClientPath, type ContentView } from "@/lib/nav";
 
-type View = "work" | "plans" | "generate" | "library" | "keywords";
-const VIEWS: { key: View; label: string; hint: string }[] = [
-  { key: "work", label: "작업 목록", hint: "다섯 상태 · 다음 행동" },
-  { key: "plans", label: "플랜 · 일정", hint: "기획 → 예정일 → 외부 글 등록" },
-  { key: "generate", label: "글 만들기", hint: "AI 생성 → 수정 → 완료 처리" },
-  { key: "library", label: "라이브러리 · 검수", hint: "승인 · 발행 기록" },
-  { key: "keywords", label: "키워드 리서치", hint: "도구 — 주제 발굴" },
-];
+type View = ContentView;
+const VIEWS = CONTENT_VIEWS;
 
 /**
  * 고객사 카드 › 콘텐츠. 기존 네 화면(플랜·생성·라이브러리·키워드)을 한 탭 안의 보기로 잇는다.
