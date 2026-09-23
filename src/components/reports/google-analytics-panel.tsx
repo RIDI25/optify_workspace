@@ -21,6 +21,8 @@ const C_GRID = "#e4e9e7";
 const C_AXIS = "#9aa5a0";
 
 export interface GscData {
+  siteUrl?: string; // 실제 조회한 속성 (설정값과 다를 수 있음)
+  note?: string;
   clicks?: number;
   impressions?: number;
   ctr?: number;

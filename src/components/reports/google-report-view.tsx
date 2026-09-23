@@ -35,7 +35,8 @@ type SavedRow = { year_month: string; gsc_snapshot: GscData | null; ga4_snapshot
 function friendlyGoogleError(s: string, saEmail: string | null): string {
   const who = s.startsWith("GSC") || /webmasters|site '/.test(s) ? "서치콘솔" : /GA4|property|PERMISSION_DENIED/i.test(s) ? "GA4" : "구글";
   if (/403|PERMISSION_DENIED|sufficient permission/i.test(s)) {
-    return `${who} 권한 없음 — 고객사 ${who}에 ${saEmail ?? "옵티파이 서비스 계정"}을(를) 사용자로 추가하고, 속성 이름이 정확한지(서치콘솔 도메인 속성은 sc-domain:도메인) 확인하세요`;
+    const avail = s.match(/볼 수 있는 속성: (.+)$/)?.[1];
+    return `${who} 권한 없음 — 고객사 ${who}에 ${saEmail ?? "옵티파이 서비스 계정"}을(를) 사용자로 추가하고, 속성 이름이 정확한지(서치콘솔 도메인 속성은 sc-domain:도메인) 확인하세요${avail ? ` · 지금 볼 수 있는 속성: ${avail}` : ""}`;
   }
   if (/404|not found/i.test(s)) return `${who} 속성을 찾지 못함 — 기본정보의 속성 이름(ID)을 확인하세요`;
   return s;
@@ -121,6 +122,7 @@ export function GoogleReportView() {
       const ga4 = (d.ga4 ?? null) as Ga4Data | null;
       setData({ key, gsc, ga4, savedAt: "방금 불러옴" });
       const errs = [d.gscError, d.ga4Error].filter(Boolean).map((s: string) => friendlyGoogleError(s, saEmail));
+      if (gsc?.note) errs.push(gsc.note);
       // 불러온 자료는 이 달 스냅샷으로 자동 저장 → 월별 추이
       const saved = await saveReport(selectedClientId, ym, {
         gsc_snapshot: gsc as Record<string, unknown> | null,
