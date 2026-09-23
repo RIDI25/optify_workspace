@@ -37,6 +37,13 @@ interface GscRow {
   position?: number;
 }
 
+/** 서치콘솔 속성 이름 맞추기 — URL 접두 속성은 'https://예시.kr/' 처럼 끝에 / 가 있어야 같은 속성으로 본다 (없으면 403) */
+export function normalizeSiteUrl(siteUrl: string): string {
+  const s = siteUrl.trim();
+  if (/^https?:\/\//i.test(s) && !s.endsWith("/")) return `${s}/`;
+  return s;
+}
+
 /**
  * GSC Search Analytics query. siteUrl 예: 'sc-domain:optify.kr' 또는 'https://optify.kr/'.
  * 기간 합계 + 상위 쿼리 25개 + 일별 추이 + 상위 페이지 + 기기별.
@@ -55,7 +62,7 @@ export async function fetchGscSnapshot(
   const { token } = await jwt.getAccessToken();
 
   const endpoint = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(
-    siteUrl,
+    normalizeSiteUrl(siteUrl),
   )}/searchAnalytics/query`;
 
   async function query(dimensions: string[], rowLimit: number): Promise<GscRow[]> {

@@ -31,6 +31,16 @@ type SavedRow = { year_month: string; gsc_snapshot: GscData | null; ga4_snapshot
  * 서치콘솔 · GA4 — 구글 서치콘솔과 애널리틱스 결과를 불러와 보기 쉽게 정리하는 화면.
  * (2026-09-06: 네이버 입력·스크린샷 분석·AI 소견·PDF 내보내기는 뺐다. 불러온 달은 자동 저장돼 월별 추이가 쌓인다.)
  */
+/** 구글 API 오류를 사람 말로. 403/PERMISSION_DENIED = 서비스 계정에 그 속성 권한이 없음 */
+function friendlyGoogleError(s: string, saEmail: string | null): string {
+  const who = s.startsWith("GSC") || /webmasters|site '/.test(s) ? "서치콘솔" : /GA4|property|PERMISSION_DENIED/i.test(s) ? "GA4" : "구글";
+  if (/403|PERMISSION_DENIED|sufficient permission/i.test(s)) {
+    return `${who} 권한 없음 — 고객사 ${who}에 ${saEmail ?? "옵티파이 서비스 계정"}을(를) 사용자로 추가하고, 속성 이름이 정확한지(서치콘솔 도메인 속성은 sc-domain:도메인) 확인하세요`;
+  }
+  if (/404|not found/i.test(s)) return `${who} 속성을 찾지 못함 — 기본정보의 속성 이름(ID)을 확인하세요`;
+  return s;
+}
+
 export function GoogleReportView() {
   const { selectedClientId, selectedClient, refreshClients } = useClientContext();
   const [ym, setYm] = useState(currentYm());
@@ -42,6 +52,19 @@ export function GoogleReportView() {
   const [history, setHistory] = useState<{ clientId: string; rows: SavedRow[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
+  const [saEmail, setSaEmail] = useState<string | null>(null); // 서치콘솔·GA4 에 추가할 서비스 계정
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/google/service-account")
+      .then((r) => r.json())
+      .then((d) => {
+        if (alive && d?.ok && d.email) setSaEmail(String(d.email));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [channels, setChannels] = useState<{ clientId: string; rows: ChannelSettings[] }>({ clientId: "", rows: [] });
   const [oppChannel, setOppChannel] = useState("");
   const [savedKw, setSavedKw] = useState<Set<string>>(new Set());
@@ -97,7 +120,7 @@ export function GoogleReportView() {
       const gsc = (d.gsc ?? null) as GscData | null;
       const ga4 = (d.ga4 ?? null) as Ga4Data | null;
       setData({ key, gsc, ga4, savedAt: "방금 불러옴" });
-      const errs = [d.gscError, d.ga4Error].filter(Boolean);
+      const errs = [d.gscError, d.ga4Error].filter(Boolean).map((s: string) => friendlyGoogleError(s, saEmail));
       // 불러온 자료는 이 달 스냅샷으로 자동 저장 → 월별 추이
       const saved = await saveReport(selectedClientId, ym, {
         gsc_snapshot: gsc as Record<string, unknown> | null,
@@ -189,6 +212,24 @@ export function GoogleReportView() {
         </div>
       </div>
 
+      {connected && saEmail && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-subtle px-4 py-2 text-xs text-muted">
+          <span>
+            권한: 고객사 서치콘솔(설정 › 사용자 및 권한)과 GA4(관리 › 속성 액세스 관리)에 이 계정을 <b>사용자</b>로 추가해야 불러올 수 있습니다 →
+          </span>
+          <code className="rounded bg-surface px-1.5 py-0.5 text-[11px] text-ink">{saEmail}</code>
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard?.writeText(saEmail);
+              setMsg("계정 이메일을 복사했습니다.");
+            }}
+            className="rounded-md border border-border px-2 py-0.5 text-[11px] text-ink hover:bg-surface"
+          >
+            복사
+          </button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-accent/30 bg-tint/30 px-4 py-3">
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={autoOn} disabled={!autoAvailable || autoBusy || !connected} onChange={toggleAuto} className="accent-[#2563EB]" />
