@@ -1141,3 +1141,7 @@ export async function renderTrackerReportPdf(
   );
   return renderToBuffer(doc);
 }
+
+// Peec 리포트(peec-report-pdf.tsx)가 같은 표·그래프·스타일을 쓴다
+export { ensureFonts, s as pdfStyles, Table, T, R, GroupedBars, LineChartSvg, InsightBlock, Bul, H2, fmtDate, fmtDateTime, ACCENT, DEEP, INK, MUTED, TINT, SUBTLE, SERIES, PALETTE };
+export type { Cell, Align };

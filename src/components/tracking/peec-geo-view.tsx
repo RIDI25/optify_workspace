@@ -17,6 +17,24 @@ function cellCls(v: number | null | undefined): string {
   return "bg-red-50 text-red-600";
 }
 
+type Insight = { insight: string; model?: string | null; created_at: string };
+
+/** 추론 마크다운 → 간단한 문단 (## 제목, - 불릿, 번호 목록) */
+function InsightText({ text }: { text: string }) {
+  return (
+    <div className="space-y-1 text-sm leading-relaxed text-ink">
+      {text.split("\n").map((raw, i) => {
+        const l = raw.replace(/\*\*/g, "").trimEnd();
+        if (!l.trim()) return <div key={i} className="h-1" />;
+        if (/^#{1,3} /.test(l)) return <h3 key={i} className="pt-2 text-[13px] font-bold text-accent-deep">{l.replace(/^#{1,3} /, "")}</h3>;
+        const b = l.match(/^(?:[-*]|(\d+)\.) (.*)$/);
+        if (b) return <p key={i} className="flex gap-2 pl-1"><span className="w-4 shrink-0 text-accent-deep">{b[1] ? `${b[1]}.` : "•"}</span><span>{b[2]}</span></p>;
+        return <p key={i}>{l}</p>;
+      })}
+    </div>
+  );
+}
+
 /**
  * GEO 탭 — Peec AI 결과 (2026-09-28). ChatGPT·구글 AI 개요·네이버 AI 브리핑 등 Peec 가 매일 재는 값을
  * /api/peec/summary 로 가져와 노출률·채널별·질문별·출처를 보여 준다. 맥의 직접 측정은 껐다.
@@ -25,7 +43,9 @@ export function PeecGeoView() {
   const { selectedClientId, selectedClient } = useClientContext();
   const [days, setDays] = useState<(typeof PERIODS)[number]>(7);
   const [tick, setTick] = useState(0);
-  const [state, setState] = useState<{ key: string; summary: PeecSummary | null; error: string | null; cached?: boolean } | null>(null);
+  const [state, setState] = useState<{ key: string; summary: PeecSummary | null; error: string | null; cached?: boolean; insight: Insight | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
   const key = `${selectedClientId}|${days}|${tick}`;
 
   useEffect(() => {
@@ -34,9 +54,9 @@ export function PeecGeoView() {
     fetch(`/api/peec/summary?clientId=${selectedClientId}&days=${days}${tick ? "&refresh=1" : ""}`)
       .then((r) => r.json())
       .then((d) => {
-        if (alive) setState({ key, summary: d.ok ? d.summary : null, error: d.ok ? null : d.error ?? "조회 실패", cached: d.cached });
+        if (alive) setState({ key, summary: d.ok ? d.summary : null, error: d.ok ? null : d.error ?? "조회 실패", cached: d.cached, insight: d.insight ?? null });
       })
-      .catch((e) => alive && setState({ key, summary: null, error: e instanceof Error ? e.message : "조회 실패" }));
+      .catch((e) => alive && setState({ key, summary: null, error: e instanceof Error ? e.message : "조회 실패", insight: null }));
     return () => {
       alive = false;
     };
@@ -44,6 +64,25 @@ export function PeecGeoView() {
 
   const cur = state?.key === key ? state : null;
   const s = cur?.summary ?? null;
+
+  async function makeInsight() {
+    if (!selectedClientId || !cur) return;
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await fetch("/api/peec/insight", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId: selectedClientId, days }) });
+      const d = await r.json();
+      if (!d.ok) setMsg(d.error ?? "추론 실패");
+      else {
+        setState({ ...cur, insight: d.insight });
+        setMsg(d.warning ?? "추론을 저장했습니다. 리포트 PDF 에 함께 들어갑니다.");
+      }
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "추론 실패");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -66,6 +105,18 @@ export function PeecGeoView() {
           <button onClick={() => setTick((n) => n + 1)} className="rounded-md border border-border px-3 py-1.5 text-sm text-ink hover:bg-subtle">
             새로고침
           </button>
+          <button onClick={makeInsight} disabled={busy || !s} className="rounded-md border border-accent/40 bg-tint px-3 py-1.5 text-sm font-semibold text-accent-deep hover:opacity-90 disabled:opacity-50">
+            {busy ? "추론 중… (30초쯤)" : cur?.insight ? "추론 다시 생성" : "추론 생성"}
+          </button>
+          <a
+            href={s && selectedClientId ? `/api/peec/report-pdf?clientId=${selectedClientId}&days=${days}` : undefined}
+            target="_blank"
+            rel="noreferrer"
+            aria-disabled={!s}
+            className={["rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90", s ? "" : "pointer-events-none opacity-50"].join(" ")}
+          >
+            리포트 PDF
+          </a>
         </div>
       </div>
 
@@ -75,6 +126,18 @@ export function PeecGeoView() {
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{cur.error}</p>
       ) : s ? (
         <>
+          {msg && <p className="text-xs text-muted">{msg}</p>}
+          {cur.insight && (
+            <section className="rounded-lg border border-accent/30 bg-tint/30 p-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-ink">추론 — 해석과 다음 조치</h2>
+                <span className="text-[11px] text-muted">
+                  {new Date(cur.insight.created_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })} · {cur.insight.model ?? "Claude"}
+                </span>
+              </div>
+              <InsightText text={cur.insight.insight} />
+            </section>
+          )}
           <p className="text-xs text-muted">
             {s.period.start} ~ {s.period.end} · AI 답변 {s.chatCount ?? "-"}건 · 질문 {s.prompts.length}개 · Peec 프로젝트 “{s.project.name}”
           </p>

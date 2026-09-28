@@ -182,3 +182,22 @@ export async function fetchPeecSummary(key: string, project: { id: string; name:
 export function channelLabel(name: string): string {
   return ({ "ChatGPT UI": "ChatGPT", "Google AI Overview": "구글 AI 개요", "Google AI Mode": "구글 AI 모드", "Naver AI Briefing": "네이버 AI 브리핑", "Perplexity UI": "Perplexity", "Gemini UI": "Gemini" } as Record<string, string>)[name] ?? name;
 }
+
+const pctText = (v: number | null | undefined) => (v == null ? "-" : `${Math.round(v * 100)}%`);
+
+/** Peec 요약 → 모델에 넘길 자료 (이것만 근거로 쓴다) */
+export function peecDigest(s: PeecSummary, clientName: string): string {
+  const L: string[] = [];
+  L.push(`고객사: ${clientName}`, `기간: ${s.period.start} ~ ${s.period.end} (매일 같은 질문을 AI 에 던진 결과, Peec AI 측정)`, `AI 답변 ${s.chatCount ?? "-"}건, 질문 ${s.prompts.length}개`);
+  L.push("", `[전체] 노출률 ${pctText(s.total.visibility)} (${s.total.visible}/${s.total.answers}), 언급 ${s.total.mentions}회, 평균 순위 ${s.total.position?.toFixed(1) ?? "-"}, 감성 ${s.total.sentiment?.toFixed(0) ?? "-"}점`);
+  L.push("", "[채널별] 채널 | 노출/답변 | 노출률 | 언급 | 평균 순위");
+  for (const c of s.channels) L.push(`${channelLabel(c.name)} | ${c.visible}/${c.answers} | ${pctText(c.visibility)} | ${c.mentions} | ${c.position?.toFixed(1) ?? "-"}`);
+  if (s.shareOfVoice.length > 1) L.push("", "[언급 점유율] " + s.shareOfVoice.slice(0, 8).map((b) => `${b.brand}${b.own ? "(우리)" : ""} ${b.mentions}회 ${pctText(b.share)}`).join(", "));
+  else L.push("", "[언급 점유율] 등록된 경쟁 브랜드 없음 — 비교 자료 없음");
+  L.push("", "[질문별 노출률] 질문 (주제) → 채널별");
+  for (const p of s.prompts) L.push(`- ${p.text}${p.topic ? ` (${p.topic})` : ""} → ${s.channels.map((c) => `${channelLabel(c.name)} ${pctText(p.cells[c.channel])}`).join(" · ")}`);
+  if (s.trend.length) L.push("", "[일별 노출률] " + s.trend.map((t) => `${t.date} ${pctText(t.visibility)}`).join(", "));
+  L.push("", `[많이 인용된 출처] (우리 사이트 순위 ${s.ownDomainRank ?? "없음"} / ${s.domainsTotal}) ` + s.topDomains.map((d) => `${d.domain}${d.own ? "(우리)" : ""} ${d.citations}회`).join(", "));
+  return L.join("\n");
+}
+
